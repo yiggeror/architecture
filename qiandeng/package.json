@@ -1,0 +1,16 @@
+{
+  "name": "qiandeng-festival",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "three": "0.175.0",
+    "three-mesh-bvh": "0.9.9"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

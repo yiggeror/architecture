@@ -70,6 +70,13 @@
         background: linear-gradient(0deg, #14142082, transparent);
       }
       .brand { display: flex; align-items: center; gap: 12px; }
+      .title-stack { display:grid; justify-items:start; }
+      #character-album {
+        color:#f1d2ad; text-decoration:none; font-size:11px; line-height:1.5;
+        letter-spacing:.13em; text-shadow:0 1px 4px #16161c; pointer-events:auto;
+        padding:5px 5px 5px 0; margin-bottom:-5px;
+      }
+      #character-album:is(:hover,:focus-visible) { color:#fff4dc; text-decoration:underline; }
       .seal {
         width: 33px;
         height: 38px;
@@ -317,7 +324,10 @@
               <path d="M8.5 24.7c3.2-1.9 5.7-1.8 8.7-.5 2.3.9 4.9.9 7.2-.8M11 28.2c2.1-.9 4.4-.7 6.4.1 1.5.6 3.3.6 5.1-.2"/>
             </g>
           </svg>
-          <h1>千灯渡</h1>
+          <div class="title-stack">
+            <h1>千灯渡</h1>
+            <a id="character-album" href="studio.html">人物图录 <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
         <div class="phase" role="group" aria-label="时段">
           <button type="button" data-mode="night" aria-pressed="true">

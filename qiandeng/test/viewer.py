@@ -564,6 +564,8 @@ class Viewer:
         self.page.locator("canvas").focus()
         self.page.keyboard.press("Tab")
         focus = lambda: self.page.evaluate("document.activeElement.textContent.trim()")
+        require(self.page.evaluate("document.activeElement.id") == "character-album", "album link unfocusable")
+        self.page.keyboard.press("Tab")
         require(focus() == "雨夜", "Tab did not reach first mode button")
         self.page.keyboard.press("Tab")
         require(focus() == "白昼", "day button unfocusable")
@@ -608,7 +610,7 @@ class Viewer:
         self.page.wait_for_timeout(180)
         require(self.pose() == stopped, "stuck key after focus returned")
         self.data["keyboard"] = {
-            "tab_order": ["画面", "雨夜", "白昼", "灯河"],
+            "tab_order": ["画面", "人物图录", "雨夜", "白昼", "灯河"],
             "w_m": round(length, 2),
             "blur_drift_m": 0,
         }

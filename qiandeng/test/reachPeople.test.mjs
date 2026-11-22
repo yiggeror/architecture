@@ -47,7 +47,7 @@ test('the night watch and the festival trades walk on the paved strips outside r
   }
 })
 
-test('outlying residents reuse the river instance batches and leave them at distance', () => {
+test('every outer resident receives an articulated model nearby and is hidden again beyond its street', () => {
   const residents = reachResidents(),
     nearby = [],
     t = 1.93
@@ -62,8 +62,7 @@ test('outlying residents reuse the river instance batches and leave them at dist
   const scene = new T.Scene(),
     camera = new T.PerspectiveCamera()
   const ships = traffic.map((spec) => ({ spec, group: new T.Group() }))
-  const people = riverPeople(scene, {}, ships),
-    count = scene.children.length
+  const people = riverPeople(scene, {}, ships)
   camera.position.set(1200, 180, 1000)
   people(t, false, camera)
   const distant = scene.children.map((m) => m.count)
@@ -72,15 +71,19 @@ test('outlying residents reuse the river instance batches and leave them at dist
   camera.position.set(at.x + 3, at.y + 1.66, at.z + 2)
   camera.lookAt(at.x, at.y + 1, at.z)
   people(t, false, camera)
-  assert.ok(scene.getObjectByName('人群·face').count > 0)
-  assert.equal(scene.children.length, count)
-  assert.ok(scene.children.every((m) => m.count <= m.instanceMatrix.count))
+  const person = scene.children.find(o => o.visible && o.userData.personId === residents.at(-1).appearance)
+  assert.ok(person, 'the visitor can approach the real high-street sitter')
+  const meshes = []
+  person.traverseVisible(o => { if (o.isSkinnedMesh) meshes.push(o) })
+  assert.ok(meshes.length && meshes.every(o => o.skeleton.bones.length >= 20))
+  assert.ok(scene.children.filter(o => o.isInstancedMesh).every(m => m.count <= m.instanceMatrix.count))
   camera.position.set(1200, 180, 1000)
   people(t, false, camera)
   assert.deepEqual(
-    scene.children.map((m) => m.count),
+    scene.children.filter(o => o.isInstancedMesh).map(m => m.count),
     distant
   )
+  assert.equal(person.visible, false)
 })
 
 test('a stationary turn refreshes the crowd, while an overhead look retains the pavement below it', () => {
@@ -149,11 +152,15 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
     return { spec, group }
   })
   const people = riverPeople(scene, {}, ships)
-  const triangles = () =>
-    scene.children.reduce((sum, m) => {
-      const vertices = m.geometry.index?.count ?? m.geometry.attributes.position.count
-      return sum + (m.count * vertices) / 3
-    }, 0)
+  const triangles = () => {
+    let total = 0
+    scene.traverseVisible(mesh => {
+      if (!mesh.isMesh) return
+      const vertices = mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count
+      total += (mesh.isInstancedMesh ? mesh.count : 1) * vertices / 3
+    })
+    return total
+  }
   const batch = (id) => scene.getObjectByName('人群·' + id)
 
   for (const [width, height] of [[864, 520], [1280, 800], [390, 700]]) {
@@ -176,8 +183,8 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
   camera.lookAt(0, 1.4, 5)
   people(0, false, camera)
   assert.ok(batch('headLow').count >= 22)
-  for (const id of ['face', 'faceFar', 'spokes', 'sleeve', 'sleeveFar', 'rod', 'rodFar'])
-    assert.equal(batch(id).count, 0, id)
+  assert.equal(batch('faceFar').count, 0)
+  assert.ok(!scene.children.some(o => o.visible && o.userData.personId !== undefined))
   const lamp = batch('lightFar'),
     lights = new T.Matrix4()
   function lanterns() {

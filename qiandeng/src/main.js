@@ -29,6 +29,8 @@ import { reachFerries } from './reachFerries.js'
 const root = document.querySelector('#court'),
   status = document.querySelector('#loading')
 const phaseButtons = document.querySelectorAll('button[data-mode]')
+if (location.pathname.endsWith(encodeURIComponent('千灯渡') + '.html'))
+  document.getElementById('character-album').href = '千灯渡-人物图录.html'
 let applyLighting
 function mode(day) {
   const phase = day ? 'day' : 'night'
@@ -55,7 +57,7 @@ async function openCity() {
   const gl = renderer.getContext(),
     info = gl.getExtension('WEBGL_debug_renderer_info')
   const software = Boolean(
-    info && /swiftshader|llvmpipe|software/i.test(gl.getParameter(info.UNMASKED_RENDERER_WEBGL))
+    info && /swiftshader|llvmpipe|software/i.test(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)),
   )
   renderer.toneMapping = T.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1
@@ -106,7 +108,7 @@ async function openCity() {
       meshes: meshes.length,
       faces: meshes.reduce(
         (n, o) => n + (o.geometry.index?.count || o.geometry.attributes.position.count) / 3,
-        0
+        0,
       ),
     })
   }
@@ -130,15 +132,17 @@ async function openCity() {
     world,
     statics,
     waters.map((surface) => surface.mesh),
-    lighting.common
+    lighting.common,
   )
   const gears = clockworkContact(dais)
   const collision = courtyardCollision(
     statics,
     waters.map((surface) => surface.mesh),
-    (a, b, r) => fleet.block(a, b, r) || ferries.block(a, b, r) || gears.block(a, b, r)
+    (a, b, r) => fleet.block(a, b, r) || ferries.block(a, b, r) || gears.block(a, b, r),
   )
   const detail = scenicDetail(statics)
+  world.characterFloor = (x, z, nominalY) => collision.floor(x, z, nominalY + 0.085, 0.195) ?? nominalY
+  world.shadeCharacter = (group) => lighting.shade(group, false, software, false)
   lighting.shade(statics, software)
   lighting.shade(moving, false, software)
   const cinema = film(renderer, scene, statics, camera, software, lighting.common),
@@ -193,6 +197,39 @@ async function openCity() {
     lastRotation = camera.quaternion.clone()
   let lastMotion = -1e5,
     swift = false
+  function visitFigure() {
+    const params = new URLSearchParams(location.hash.slice(1)),
+      key = params.get('person')
+    if (!key || !/^\d+$/.test(key)) return
+    const subject = fleet.subject(Number(key), elapsed)
+    if (!subject) return
+    if (params.has('light')) mode(params.get('light') === 'day')
+    const vertical = new T.Vector3(0, 1, 0)
+    const { focus, forward } = subject
+    const start = focus.clone()
+    // The walkways are narrow. Try the two three-quarter views first, then
+    // turn around the sitter until a swept camera reaches open space.
+    let eye = start,
+      best = 0
+    for (const angle of [0.39, -0.48, 0.93, -1, 1.65, -1.68, 2.65]) {
+      const offset = forward.clone().applyAxisAngle(vertical, angle).multiplyScalar(2.16)
+      offset.y += 0.16
+      const sample = start.clone()
+      collision.move(sample, offset.x, offset.y, offset.z)
+      const distance = sample.distanceTo(start)
+      if (distance > best && collision.clearance(sample) < 0.001) {
+        eye = sample
+        best = distance
+      }
+      if (best >= 2.12) break
+    }
+    if (best > 0.33) {
+      walk.arrive(eye.toArray(), focus.toArray())
+      document.getElementById('character-album').hash = 'person=' + Number(key)
+    }
+  }
+  visitFigure()
+  addEventListener('hashchange', visitFigure)
   function draw(t) {
     northFalls.update(t, day)
     sky.update(t, day)
@@ -278,6 +315,7 @@ async function openCity() {
       collision,
       world,
       stations,
+      subject: fleet.subject,
       regionStats,
       water,
       lighting,
@@ -325,6 +363,6 @@ requestAnimationFrame(() =>
       console.error(e)
       root.setAttribute('aria-busy', 'false')
       status.textContent = '场景启动遇到问题。请启用 WebGL 2 硬件加速后重新打开。'
-    })
-  )
+    }),
+  ),
 )

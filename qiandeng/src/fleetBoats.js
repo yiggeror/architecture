@@ -2,6 +2,7 @@ import * as T from 'three'
 import { Mason } from './mesh.js'
 import { lantern, roof } from './kit.js'
 import { buildCarp, cord, oval } from './fleetCarp.js'
+import { crewFixtures, sweepPoint } from './characterPropCrew.js'
 
 const tau = Math.PI * 2
 function breadth(boat, u) {
@@ -59,13 +60,14 @@ function hull(b, m, boat, boxes) {
         [0, top(boat, s) + 0.13, bow],
         [0, top(boat, s) + 0.27, bow + s * 0.08],
       ],
-      0.05
+      0.05,
     )
   }
 }
-function bench(b, m, x, y, z, w) {
-  b.box(m.wood, x, y + 0.31, z, w, 0.105, 0.34)
-  for (const sg of [-1, 1]) b.box(m.darkwood, x + sg * w * 0.31, y + 0.14, z, 0.093, 0.27, 0.18)
+function bench(b, m, x, y, z, w, d) {
+  b.box(m.wood, x, y + 0.31, z, w, 0.105, d)
+  for (const sg of [-1, 1])
+    b.box(m.darkwood, x + sg * w * 0.3, y + 0.14, z + sg * d * 0.29, 0.093, 0.27, 0.13)
 }
 function crate(b, m, x, y, z, w, h, d) {
   b.box(m.reed, x, y + h / 2, z, w, h, d, 0.86)
@@ -84,7 +86,7 @@ function basket(b, m, x, y, z, r) {
       [x, y + r * 0.29 * k + 0.024, z],
       r * (0.7 + 0.066 * k),
       r * (0.72 + 0.066 * k),
-      12
+      12,
     )
 }
 function canopy(b, m, z, len, w, eave, body) {
@@ -112,6 +114,18 @@ function canopy(b, m, z, len, w, eave, body) {
 function handrail(b, m, boat, z0, z1, h, panels) {
   const w = boat.beam * 0.43
   for (const sg of [-1, 1]) {
+    let from = z0
+    for (const sweep of crewFixtures(boat).sweeps.filter((o) => o.side === sg)) {
+      const low = Math.max(z0, sweep.z - 0.13),
+        high = Math.min(z1, sweep.z + 0.59)
+      if (high <= low) continue
+      if (low - from > 0.16) section(sg, from, low)
+      from = high
+      b.box(m.wood, sg * w, boat.deck + 0.12, (low + high) / 2, 0.086, 0.067, high - low)
+    }
+    if (z1 - from > 0.16) section(sg, from, z1)
+  }
+  function section(sg, z0, z1) {
     for (const y of [boat.deck + 0.15, boat.deck + h])
       b.box(m.vermilion, sg * w, y, (z0 + z1) / 2, 0.083, 0.098, z1 - z0)
     const n = Math.ceil((z1 - z0) / 0.98)
@@ -184,7 +198,7 @@ function pavilion(b, m, boat, cab, boxes) {
             m.darkwood,
             [s * w * 0.48, base + 0.77, q],
             [s * w * 0.48, base + 1.08, q + a * p * 0.25],
-            0.03
+            0.03,
           )
       } else {
         const x = s * w * 0.45
@@ -296,7 +310,6 @@ export function buildVessel(scene, m, boat, silk, panels) {
   else if (passenger || music) {
     handrail(b, m, boat, -boat.length * 0.32, boat.length * 0.35, 0.51, false)
     pavilion(b, m, boat, passenger, boxes)
-    bench(b, m, 0, d, -boat.length * 0.31, boat.beam * 0.72)
     if (music) drum(b, m, 0, d + 0.05, boat.length * 0.3, 0.29)
   } else if (boat.kind === 'covered') {
     const eave = d + 0.82,
@@ -308,9 +321,8 @@ export function buildVessel(scene, m, boat, silk, panels) {
         y = eave + 0.5 * w * 0.82 * Math.sqrt(Math.max(0, 1 - (v / (w * 0.5)) ** 2))
       boxes.push([v - 0.1 * w, y - 0.15, 0.13 - len * 0.5, v + 0.1 * w, y + 0.03, 0.13 + len * 0.5])
     }
-    bench(b, m, 0, d, -boat.length * 0.34, boat.beam * 0.69)
     basket(b, m, 0.12, d + 0.01, boat.length * 0.31, 0.29)
-    lantern(b, m, -0.52, d + 1.15, -len * 0.5, 0.12, 0.3, 'amber')
+    lantern(b, m, 0.52, d + 1.15, -len * 0.5, 0.12, 0.3, 'amber')
   } else if (boat.kind === 'cargo') {
     for (let j = 0; j < 3; j++)
       for (const side of [-1, 1]) {
@@ -323,46 +335,75 @@ export function buildVessel(scene, m, boat, silk, panels) {
     canopy(b, m, 2.42, 1.25, 1.35, d + 0.88, m.reed)
     boxes.push([-0.83, d - 0.01, -1.36, 0.82, d + 0.81, 1.35])
   } else {
-    for (const z of [-1.87, -0.62, 0.72, 1.85]) bench(b, m, 0, d, z, boat.beam * 0.78)
     for (const side of [-1, 1])
       cord(
         b,
         m.rope,
         [
-          [side * 0.67, d + 0.47, -1.91],
+          [side * 0.67, d + 0.47, side < 0 ? -1.51 : -1.91],
           [side * 0.78, d + 0.36, 0.1],
           [side * 0.67, d + 0.49, 1.8],
         ],
-        0.024
+        0.024,
       )
   }
   // One local yaw pivot per sweep. Its blade and timber shaft are a single rigid piece.
-  const oars = []
-  const oarStations =
-    boat.kind === 'carp' ? [-4.5, -3.15] : [boat.kind === 'cargo' ? -boat.length * 0.36 : -boat.length * 0.32]
-  for (const z of oarStations)
-    for (const s of boat.kind === 'carp' ? [-1, 1] : [-1]) {
-      const pivot = new T.Group(),
-        o = new Mason(pivot),
-        w = boat.beam / 2
-      pivot.position.set(s * w * 0.91, d + 0.19, z)
-      const distant = [s * (boat.kind === 'carp' ? 1.04 : 0.88), -0.5, -1.46]
-      o.tube(m.wood, [-s * 0.49, 0.25, 0.65], distant, 0.047, 0.042, 7)
-      o.beam(
-        m.wood,
-        [distant[0] - 0.15 * s, -0.35, -1.16],
-        [distant[0] + s * 0.18, -0.64, -1.86],
-        0.17,
-        0.06,
-        [1.28, 1.35, 1.18]
-      )
-      o.finish()
-      group.add(pivot)
-      oars.push({ pivot, s, z })
-    }
+  const fixtures = crewFixtures(boat),
+    oars = []
+  for (const seat of fixtures.benches) bench(b, m, seat.x, d, seat.z, seat.w, seat.d)
+  for (const station of fixtures.sweeps) {
+    const pivot = new T.Group(),
+      o = new Mason(pivot),
+      pin = station.pin
+    pivot.position.fromArray(pin)
+    const s = station.side
+    b.tube(m.bronze, [pin[0], d + 0.04, pin[2]], [pin[0], pin[1] + 0.045, pin[2]], 0.047, 0.03, 8)
+    b.box(m.wood, pin[0], pin[1] - 0.193, pin[2], 0.14, 0.064, 0.155)
+    buildSweep(o, { wood: m.wood, binding: m.rope, ring: m.bronze }, station, boat.deck)
+    o.finish()
+    group.add(pivot)
+    oars.push({ pivot, s, z: station.z, station })
+  }
   b.finish()
   scene.add(group)
   return { group, boxes, oars }
+}
+
+// The thinner turned section is where both hands close. The broad blade
+// follows the same centreline all the way down to the water.
+export function buildSweep(b, m, station, deck) {
+  const point = (t) => sweepPoint(station, t).toArray()
+  b.tube(m.wood, point(station.handleEnd), point(0.5), 0.017, 0.02, 12)
+  b.tube(m.wood, point(0.5), point(-1.52), 0.02, 0.039, 10)
+  for (const t of [0.85, 0.52, 0.12, -0.13])
+    b.tube(m.binding, point(t), point(t - 0.017), t > 0.4 ? 0.021 : 0.033, t > 0.4 ? 0.021 : 0.033, 10)
+  b.tube(m.ring, point(0.893), point(0.875), 0.02, 0.02, 9)
+  const bladeEnd = 1.9 + Math.max(0, deck - 0.48) * 1.13
+  const cup = 0.032 + Math.max(0, deck - 0.53) * 0.23
+  const sections = [
+    [-1.25, 0.047],
+    [-1.5, 0.092],
+    [-bladeEnd + 0.11, 0.107],
+    [-bladeEnd, 0.063],
+  ]
+  const k = station.side,
+    across = [0.802, 0, 0.598 * k]
+  let prev
+  for (const [t, w] of sections) {
+    const p = point(t)
+    p[1] -= cup * ((-t - 1.25) / (bladeEnd - 1.25)) ** 1.7
+    const ring = [
+      [-w, 0],
+      [0, 0.027],
+      [w, 0],
+      [0, -0.014],
+    ].map(([f, h]) => [p[0] + f * across[0], p[1] + h, p[2] + f * across[2]])
+    if (prev)
+      for (let j = 0; j < 4; j++)
+        b.face(m.wood, [prev[j], prev[(j + 1) % 4], ring[(j + 1) % 4], ring[j]], j === 1 ? 0.89 : 0.78)
+    prev = ring
+  }
+  b.face(m.wood, prev, 0.85)
 }
 
 export function dockWork(scene, m) {

@@ -60,9 +60,16 @@ export function procession(scene, m, world) {
     ships[i].lamps.push({ light, offset: new T.Vector3(...offset) })
   }
   const surface = wakes(scene, traffic),
-    people = riverPeople(scene, m, ships),
+    people = riverPeople(
+      scene,
+      m,
+      ships,
+      (group) => world.shadeCharacter?.(group),
+      (x, z, y) => world.characterFloor?.(x, z, y) ?? y,
+    ),
     flags = pennants(ships, m)
   const detail = boatDistance(ships, m)
+  world.handLights = people.handLights
   const a = new T.Vector3(),
     b = new T.Vector3()
   const displace = protectPassengers(ships),
@@ -86,7 +93,7 @@ export function procession(scene, m, world) {
         (0.0075 * Math.sin(t * 1.36 + i * 0.8)) / rock,
         Math.atan2(p.dx, p.dz),
         (0.012 * Math.sin(t * 1.67 + i * 0.95)) / rock,
-        'YXZ'
+        'YXZ',
       )
       const stroke = t * 1.73 + i * 0.77
       for (const o of s.oars) {
@@ -128,5 +135,10 @@ export function procession(scene, m, world) {
     return false
   }
   update(0, false)
-  return { update, block, protect: (eye, clearance) => displace(eye, clearance, frame, continuous) }
+  return {
+    update,
+    block,
+    subject: people.subject,
+    protect: (eye, clearance) => displace(eye, clearance, frame, continuous),
+  }
 }

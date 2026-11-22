@@ -1,5 +1,6 @@
 import * as T from 'three'
 import { swiftVertex, swiftFragment } from './mobileLight.js'
+import { figureSkinning } from './figureSkinning.js'
 import { innerField, valleyField, lanternField, nightAir, sunAtlas, districtAir } from './cityLightField.js'
 
 export const moonDirection = new T.Vector3(-0.87, 0.74, -0.1).normalize()
@@ -128,12 +129,15 @@ function directionalDepth(renderer, statics, direction, size, outer = false) {
 }
 const maxMoving = 10
 const vs = `
+#include <skinning_pars_vertex>
+#include <morphtarget_pars_vertex>
 varying vec3 wp,wn,surfaceColor;
 varying vec2 st;
 varying vec4 shadowCoord;
 uniform mat4 lightMatrix;
 void main(){
   vec4 pos=vec4(position,1.);vec3 norm=normal;
+  ${figureSkinning}
   #ifdef USE_INSTANCING
     pos=instanceMatrix*pos;mat3 im=mat3(instanceMatrix);
     norm=im*(norm/vec3(dot(im[0],im[0]),dot(im[1],im[1]),dot(im[2],im[2])));
@@ -151,6 +155,9 @@ precision highp sampler3D;
 varying vec3 wp,wn,surfaceColor;
 varying vec2 st; varying vec4 shadowCoord;
 uniform sampler2D paint,glowMap,reliefMap,occTex,mirrorMap;
+#ifdef FIGURE_ROUGHNESS
+uniform sampler2D grainGloss;
+#endif
 ${lanternField}
 ${nightAir}
 ${sunAtlas}
@@ -158,19 +165,19 @@ uniform vec3 pigment,emission,sunDir,fogHue;
 uniform vec4 movePlace[${maxMoving}],moveHue[${maxMoving}];
 uniform mat4 waterMatrix;
 uniform float rough,metal,day,clockTime,cutoff,mapRepeatX,mapRepeatY,shadowTexel,waterValid;
-uniform vec2 uvOffset; uniform float relief;
-vec3 practical(vec3 n, vec3 eye, vec3 base, out vec3 gloss){
+uniform vec2 uvOffset; uniform float relief, groundReflection, skinWrap, opacity;
+vec3 practical(vec3 n, vec3 eye, float surfaceRoughness, out vec3 gloss){
  vec3 light,dir;lanternFieldAt(wp,light,dir);
  float agreement=min(1.,length(dir));dir/=max(.001,agreement);
  float direct=mix(.75,.27+.97*max(0.,dot(n,dir)),agreement);
  vec3 lighting=direct*light;
- gloss=light*pow(max(dot(n,normalize(dir+eye)),0.),mix(62.,9.,rough))*.54*agreement;
+ gloss=light*pow(max(dot(n,normalize(dir+eye)),0.),mix(62.,9.,surfaceRoughness))*.54*agreement;
  for(int i=0;i<${maxMoving};i++){
    vec3 delta=movePlace[i].xyz-wp;float d2=dot(delta,delta);
    if(d2*movePlace[i].w>1.)continue;
    float fall=max(1.-d2*movePlace[i].w,0.);vec3 l=moveHue[i].rgb*(fall*fall/(2.+d2));
    vec3 d=delta*inversesqrt(d2+.0001);
-   lighting+=l*(.25+.98*max(dot(n,d),0.));gloss+=l*pow(max(dot(n,normalize(d+eye)),0.),mix(65.,10.,rough))*.8;
+   lighting+=l*(.25+.98*max(dot(n,d),0.));gloss+=l*pow(max(dot(n,normalize(d+eye)),0.),mix(65.,10.,surfaceRoughness))*.8;
  }
  return lighting;
 }
@@ -193,19 +200,23 @@ void main(){
    n=normalize(n+(ax*bump.x+ay*bump.y)*inversesqrt(max(max(dot(ax,ax),dot(ay,ay)),1.e-12)));
  }
  vec3 base=pigment*surfaceColor*tex.rgb,eye=normalize(cameraPosition-wp),gloss;
- float up=n.y*.5+.5,sha=sunlight(n),dotL=max(0.,dot(n,sunDir));
- vec3 lam=practical(n,eye,base,gloss);
+ float surfaceRoughness=rough;
+ #ifdef FIGURE_ROUGHNESS
+  surfaceRoughness*=texture2D(grainGloss,uv).g;
+ #endif
+ float up=n.y*.5+.5,sha=sunlight(n),dotL=max(0.,(dot(n,sunDir)+skinWrap)/(1.+skinWrap));
+ vec3 lam=practical(n,eye,surfaceRoughness,gloss);
  lam/=1.+.145*max(lam.r,max(lam.g,lam.b));
  vec3 ambience=skyFill(up,day),key=keyColor(day);
  vec3 color=base*(ambience+dotL*sha*key+lam*mix(1.43,.018,day));
- float sheen=pow(max(dot(n,normalize(eye+sunDir)),0.),mix(91.,5.,rough));
- color+=key*sha*sheen*(.12+.39*metal)*(1.-rough);
- color+=gloss*(1.27-rough)*mix(1.48,.045,day);
+ float sheen=pow(max(dot(n,normalize(eye+sunDir)),0.),mix(91.,5.,surfaceRoughness));
+ color+=key*sha*sheen*(.12+.39*metal)*(1.-surfaceRoughness);
+ color+=gloss*(1.27-surfaceRoughness)*mix(1.48,.045,day);
  vec3 emit=emission*texture2D(glowMap,uv).rgb*surfaceColor;
  color+=emit*mix(1.30,.026,day);
  // Wet sett joints break up the painted reflection and keep the dry grain in sheltered wood.
  float levelness=smoothstep(.81,.995,n.y);float low=1.-smoothstep(1.8,3.2,wp.y);
- float slick=levelness*low*(1.-smoothstep(.63,.84,rough))*smoothstep(-.1,.30,wp.y);
+ float slick=groundReflection*levelness*low*(1.-smoothstep(.63,.84,rough))*smoothstep(-.1,.30,wp.y);
  if(waterValid>.5 && slick>.001){
     vec4 proj=waterMatrix*vec4(wp.x,-wp.z+11.,0.,1.);
     vec2 q=proj.xy/proj.w;
@@ -218,7 +229,7 @@ void main(){
  float mist=riverDistanceMist(length(wp-cameraPosition),cameraPosition.y,day);
  color=mix(color,fogHue,mist);
  if(any(isnan(color))||any(isinf(color)))color=base*(ambience+dotL*sha*key)+emit*mix(1.,.026,day);
- gl_FragColor=vec4(min(color,vec3(48.)),tex.a);
+ gl_FragColor=vec4(min(color,vec3(48.)),tex.a*opacity);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
 }`
@@ -258,13 +269,14 @@ export function lightCity(renderer, statics, world) {
     movePlace: { value: movePlace },
     moveHue: { value: moveHue },
   }
-  const cache = new Map(),
-    lite = new Map(),
+  const cache = new WeakMap(),
+    lite = new WeakMap(),
     switchable = []
   function swift(mat) {
     if (!lite.has(mat)) {
       const low = new T.ShaderMaterial({
         name: mat.name,
+        defines: mat.defines,
         uniforms: mat.uniforms,
         vertexShader: swiftVertex,
         fragmentShader: swiftFragment,
@@ -281,7 +293,7 @@ export function lightCity(renderer, statics, world) {
     }
     return lite.get(mat)
   }
-  function shade(root, performanceMode = false, alwaysSwift = false) {
+  function shade(root, performanceMode = false, alwaysSwift = false, groundReflection = true) {
     root.traverse((obj) => {
       if (!obj.isMesh || !obj.material?.isMeshStandardMaterial) return
       const src = obj.material
@@ -291,6 +303,10 @@ export function lightCity(renderer, statics, world) {
           glow = src.emissive.clone().multiplyScalar(src.emissiveIntensity)
         mat = new T.ShaderMaterial({
           name: src.name,
+          defines: {
+            ...(!groundReflection && src.normalMap ? { FIGURE_RELIEF: 1 } : {}),
+            ...(!groundReflection && src.roughnessMap ? { FIGURE_ROUGHNESS: 1 } : {}),
+          },
           vertexShader: vs,
           fragmentShader: fs,
           vertexColors: true,
@@ -307,9 +323,13 @@ export function lightCity(renderer, statics, world) {
             pigment: { value: src.color },
             emission: { value: glow },
             reliefMap: { value: src.normalMap || white },
+            grainGloss: { value: src.roughnessMap || white },
             relief: { value: src.normalMap ? src.normalScale?.x || 0.4 : 0 },
             rough: { value: src.roughness },
             metal: { value: src.metalness },
+            groundReflection: { value: groundReflection ? 1 : 0 },
+            skinWrap: { value: src.userData.skin ? 0.18 : 0 },
+            opacity: { value: src.opacity },
             cutoff: { value: src.alphaTest },
             mapRepeatX: { value: map?.repeat.x || 1 },
             mapRepeatY: { value: map?.repeat.y || 1 },
@@ -323,7 +343,8 @@ export function lightCity(renderer, statics, world) {
       if (performanceMode) switchable.push([obj, mat, swift(mat)])
     })
   }
-  const lightColor = new T.Color()
+  const lightColor = new T.Color(),
+    wick = new T.Vector3()
   function update(t) {
     common.clockTime.value = t
     world.moving.slice(0, maxMoving).forEach((l, i) => {
@@ -331,6 +352,20 @@ export function lightCity(renderer, statics, world) {
       lightColor.set(l.color).multiplyScalar(l.power * l.strength)
       moveHue[i].set(lightColor.r, lightColor.g, lightColor.b, 0)
     })
+    // Two close silk lanterns can illuminate both their bearers and the
+    // neighbouring stonework. They follow the animated handle on each frame.
+    for (let i = world.moving.length; i < maxMoving; i++) {
+      const lamp = world.handLights?.[i - world.moving.length]
+      if (lamp) {
+        lamp.getWorldPosition(wick)
+        movePlace[i].set(wick.x, wick.y, wick.z, 1 / (lamp.distance * lamp.distance))
+        lightColor.copy(lamp.color).multiplyScalar(lamp.intensity * 2.65)
+        moveHue[i].set(lightColor.r, lightColor.g, lightColor.b, 1)
+      } else {
+        movePlace[i].set(0, -1000, 0, 1)
+        moveHue[i].set(0, 0, 0, 0)
+      }
+    }
   }
   function mode(day) {
     if (day) prepareDay()

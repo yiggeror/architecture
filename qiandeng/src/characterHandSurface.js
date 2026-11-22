@@ -1,0 +1,118 @@
+import * as T from 'three'
+
+export const tau = Math.PI * 2
+export const clamp = (t, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, t))
+export const mix = (a, b, t) => a + (b - a) * t
+export function smooth(t) {
+  t = clamp(t)
+  return t * t * (3 - 2 * t)
+}
+export const add = (a, b) => a.map((v, i) => v + b[i])
+export const minus = (a, b) => a.map((v, i) => v - b[i])
+export const scale = (v, s) => v.map((n) => n * s)
+export const lerp = (a, b, t) => a.map((v, i) => mix(v, b[i], t))
+export const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+export const cross = (a, b) => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+]
+export const unit = (v) => scale(v, 1 / (Math.hypot(...v) || 1))
+export const pigment = (hex) => new T.Color(hex).toArray()
+export const tint = (c, n) => c.map((v) => v * n)
+export function table(t, stops) {
+  for (let i = 1; i < stops.length; i++) {
+    const [b, v] = stops[i],
+      [a, u] = stops[i - 1]
+    if (t <= b) return mix(u, v, clamp((t - a) / (b - a)))
+  }
+  return stops.at(-1)[1]
+}
+
+// Each patch shares its ring vertices. Mirroring reverses the triangles at
+// construction time so dorsal skin and the medial sole keep outward normals.
+export class PaintedSurface {
+  constructor(mirror = false, transform = (p) => p) {
+    this.position = []
+    this.colors = []
+    this.uv = []
+    this.triangles = []
+    this.mirror = mirror
+    this.transform = transform
+  }
+  vertex(p, c, u, v) {
+    const index = this.position.length / 3
+    this.position.push(...this.transform(p))
+    this.colors.push(...c)
+    this.uv.push(u, v)
+    return index
+  }
+  tri(a, b, c, reverse = false) {
+    if (this.mirror !== reverse) this.triangles.push(a, c, b)
+    else this.triangles.push(a, b, c)
+  }
+  patch(width, heights, sample, options = {}) {
+    const rows = [],
+      closed = options.closed ?? false,
+      cols = width + (closed ? 0 : 1)
+    for (let j = 0; j < heights.length; j++) {
+      const t = heights[j],
+        row = []
+      for (let i = 0; i < cols; i++) {
+        if (options.omit) {
+          const adjacent = [i - 1, i].some((col) =>
+            [j - 1, j].some(
+              (row) =>
+                row >= 0 && row < heights.length - 1 && col >= 0 && col < width && !options.omit(col, row),
+            ),
+          )
+          if (!adjacent) {
+            row.push(-1)
+            continue
+          }
+        }
+        const u = i / width,
+          d = sample(u, t)
+        row.push(this.vertex(d.p, d.c, d.uv?.[0] ?? u, d.uv?.[1] ?? t))
+      }
+      rows.push(row)
+    }
+    for (let j = 0; j < rows.length - 1; j++)
+      for (let i = 0; i < width; i++) {
+        if (options.omit?.(i, j)) continue
+        const k = (i + 1) % cols,
+          a = rows[j][i],
+          b = rows[j][k],
+          c = rows[j + 1][k],
+          d = rows[j + 1][i]
+        this.tri(a, b, c, options.reverse)
+        this.tri(a, c, d, options.reverse)
+      }
+    return rows
+  }
+  cap(row, p, c, reverse = false) {
+    const middle = this.vertex(p, c, 0.5, 0.5)
+    for (let i = 0; i < row.length; i++) {
+      const a = row[i] * 3,
+        b = row[(i + 1) % row.length] * 3
+      if (
+        Math.abs(this.position[a] - this.position[b]) +
+          Math.abs(this.position[a + 1] - this.position[b + 1]) +
+          Math.abs(this.position[a + 2] - this.position[b + 2]) >
+        1e-8
+      )
+        this.tri(row[i], middle, row[(i + 1) % row.length], !reverse)
+    }
+  }
+  geometry() {
+    const g = new T.BufferGeometry()
+    g.setAttribute('position', new T.Float32BufferAttribute(this.position, 3))
+    g.setAttribute('color', new T.Float32BufferAttribute(this.colors, 3))
+    g.setAttribute('uv', new T.Float32BufferAttribute(this.uv, 2))
+    g.setIndex(this.triangles)
+    g.computeVertexNormals()
+    g.computeBoundingSphere()
+    g.computeBoundingBox()
+    return g
+  }
+}

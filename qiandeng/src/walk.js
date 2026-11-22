@@ -89,9 +89,9 @@ export function navigation(canvas, camera, world) {
   }
 
   function step(now) {
-    // A long foreground render still counts as held input. A hidden or
-    // suspended document clears its inputs before the next visible frame.
-    const dt = Math.max(0, (now - lastTime) / 1000)
+    // During a stalled frame the viewer has had no visual feedback to steer
+    // or release. Avoid replaying several seconds of travel into a roof.
+    const dt = Math.min(0.16, Math.max(0, (now - lastTime) / 1000))
     lastTime = Math.max(lastTime, now)
     if (!dt || (!held.size && !axis.lengthSq())) return
     const key = (code) => Number(held.has(code))
@@ -268,6 +268,11 @@ export function navigation(canvas, camera, world) {
   jump(0)
   return {
     step,
+    arrive(eye, target) {
+      stopInputs()
+      placeStation({ eye, target })
+      select(-1)
+    },
     resize() {
       const s = stations[selected]
       if (s?.panorama || s?.portraitEye) placeStation(s)

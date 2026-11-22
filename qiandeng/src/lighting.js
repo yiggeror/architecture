@@ -1,7 +1,8 @@
 import * as T from 'three'
 import { swiftVertex, swiftFragment } from './mobileLight.js'
+import { innerField, valleyField, lanternField, nightAir, sunAtlas, districtAir } from './cityLightField.js'
 
-export const moonDirection = new T.Vector3(-0.23, 0.42, -0.88).normalize()
+export const moonDirection = new T.Vector3(-0.87, 0.74, -0.1).normalize()
 export const sunDirection = new T.Vector3(-0.65, 0.57, 0.49).normalize()
 export function lightRegistry() {
   const lights = [],
@@ -27,12 +28,10 @@ export function lightRegistry() {
   }
 }
 
-const origin = new T.Vector3(-66, -4, -125),
-  step = 1.55
-const W = 87,
-  H = 66,
-  D = 140
-function volume(lights) {
+function volume(lights, field) {
+  const [W, H, D] = field.size,
+    origin = new T.Vector3(...field.origin),
+    step = field.step
   const count = W * H * D,
     rad = new Float32Array(count * 4),
     vec = new Float32Array(count * 4)
@@ -90,10 +89,11 @@ function volume(lights) {
 }
 
 // A depth texture per celestial body is shared by every roof, moving boat and pedestrian.
-function directionalDepth(renderer, statics, direction, size) {
-  const center = new T.Vector3(0, 9, -17),
-    camera = new T.OrthographicCamera(-129, 129, 126, -126, 3, 445)
-  camera.position.copy(center).addScaledVector(direction, 210)
+function directionalDepth(renderer, statics, direction, size, outer = false) {
+  const center = outer ? new T.Vector3(48, 64, -246) : new T.Vector3(0, 9, -17)
+  const span = outer ? 528 : 129
+  const camera = new T.OrthographicCamera(-span, span, span, -span, 3, outer ? 1250 : 445)
+  camera.position.copy(center).addScaledVector(direction, outer ? 625 : 210)
   camera.lookAt(center)
   camera.updateMatrixWorld()
   const target = new T.WebGLRenderTarget(size, size, {
@@ -108,7 +108,7 @@ function directionalDepth(renderer, statics, direction, size) {
     clear = renderer.getClearColor(new T.Color())
   const ignored = []
   statics.traverse((o) => {
-    if (o.isMesh && (!o.castShadow || (o.material.transparent && o.material.opacity < 0.5))) {
+    if (o.isMesh && o.visible && (!o.castShadow || (o.material.transparent && o.material.opacity < 0.5))) {
       ignored.push(o)
       o.visible = false
     }
@@ -139,7 +139,7 @@ void main(){
     norm=im*(norm/vec3(dot(im[0],im[0]),dot(im[1],im[1]),dot(im[2],im[2])));
   #endif
   vec4 world=modelMatrix*pos;
-  wp=world.xyz;wn=normalize(mat3(modelMatrix)*norm);st=uv;surfaceColor=color;
+  wp=world.xyz;vec3 n=mat3(modelMatrix)*norm;wn=dot(n,n)>1.e-12?normalize(n):vec3(0.,1.,0.);st=uv;surfaceColor=color;
   #ifdef USE_INSTANCING_COLOR
     surfaceColor*=instanceColor;
   #endif
@@ -151,17 +151,16 @@ precision highp sampler3D;
 varying vec3 wp,wn,surfaceColor;
 varying vec2 st; varying vec4 shadowCoord;
 uniform sampler2D paint,glowMap,reliefMap,occTex,mirrorMap;
-uniform sampler3D radiance,directions;
+${lanternField}
+${nightAir}
+${sunAtlas}
 uniform vec3 pigment,emission,sunDir,fogHue;
 uniform vec4 movePlace[${maxMoving}],moveHue[${maxMoving}];
 uniform mat4 waterMatrix;
 uniform float rough,metal,day,clockTime,cutoff,mapRepeatX,mapRepeatY,shadowTexel,waterValid;
 uniform vec2 uvOffset; uniform float relief;
 vec3 practical(vec3 n, vec3 eye, vec3 base, out vec3 gloss){
- vec3 uvw=((wp-vec3(-66.,-4.,-125.))/1.55+.5)/vec3(87.,66.,140.);
- float inside=step(0.,min(min(uvw.x,uvw.y),uvw.z))*step(max(max(uvw.x,uvw.y),uvw.z),1.);
- vec3 light=texture(radiance,uvw).rgb;light*=light*12.*inside;
- vec3 dir=texture(directions,uvw).xyz*2.-1.;
+ vec3 light,dir;lanternFieldAt(wp,light,dir);
  float agreement=min(1.,length(dir));dir/=max(.001,agreement);
  float direct=mix(.75,.27+.97*max(0.,dot(n,dir)),agreement);
  vec3 lighting=direct*light;
@@ -177,8 +176,8 @@ vec3 practical(vec3 n, vec3 eye, vec3 base, out vec3 gloss){
 }
 float sunlight(vec3 n){
  vec3 sc=shadowCoord.xyz*.5+.5;
- if(sc.x<0.||sc.y<0.||sc.x>1.||sc.y>1.||sc.z<0.||sc.z>1.)return 1.;
- float bias=.00030+.00048*(1.-abs(dot(n,sunDir))),d=sc.z-bias;
+ if(edgeDepth(sc)<.003)return farShadow(wp,n,sunDir);
+ float bias=.00045+.00115*(1.-abs(dot(n,sunDir))),d=sc.z-bias;
  vec2 u=vec2(shadowTexel*.88,0.);return .25*(
  step(d,texture2D(occTex,sc.xy+u.xy+u.yx).r)+step(d,texture2D(occTex,sc.xy+u.xy-u.yx).r)+
  step(d,texture2D(occTex,sc.xy-u.xy+u.yx).r)+step(d,texture2D(occTex,sc.xy-u.xy-u.yx).r));
@@ -197,14 +196,13 @@ void main(){
  float up=n.y*.5+.5,sha=sunlight(n),dotL=max(0.,dot(n,sunDir));
  vec3 lam=practical(n,eye,base,gloss);
  lam/=1.+.145*max(lam.r,max(lam.g,lam.b));
- vec3 ambience=mix(mix(vec3(.105,.091,.125),vec3(.29,.42,.63),up),mix(vec3(.35,.34,.35),vec3(.76,.94,1.08),up),day);
- vec3 key=mix(vec3(.67,.86,1.16),vec3(1.83,1.53,1.12),day);
- vec3 color=base*(ambience+dotL*sha*key+lam*mix(1.08,.018,day));
+ vec3 ambience=skyFill(up,day),key=keyColor(day);
+ vec3 color=base*(ambience+dotL*sha*key+lam*mix(1.43,.018,day));
  float sheen=pow(max(dot(n,normalize(eye+sunDir)),0.),mix(91.,5.,rough));
  color+=key*sha*sheen*(.12+.39*metal)*(1.-rough);
- color+=gloss*(1.27-rough)*mix(1.24,.045,day);
+ color+=gloss*(1.27-rough)*mix(1.48,.045,day);
  vec3 emit=emission*texture2D(glowMap,uv).rgb*surfaceColor;
- color+=emit*mix(1.,.026,day);
+ color+=emit*mix(1.30,.026,day);
  // Wet sett joints break up the painted reflection and keep the dry grain in sheltered wood.
  float levelness=smoothstep(.81,.995,n.y);float low=1.-smoothstep(1.8,3.2,wp.y);
  float slick=levelness*low*(1.-smoothstep(.63,.84,rough))*smoothstep(-.1,.30,wp.y);
@@ -217,19 +215,24 @@ void main(){
     vec3 refl=texture2D(mirrorMap,clamp(q+jitter,.001,.999)).rgb;
     color=mix(color,refl,slick*facing*smoothstep(.22,.77,noiseVal)*mix(.51,.16,day));
  }
- float dist=length(wp-cameraPosition),density=mix(.0052,.00365,day)*mix(1.,.69,smoothstep(18.,80.,cameraPosition.y));
- float mist=1.-exp(-dist*dist*density*density);
- color=mix(color,fogHue,mist*.89);
+ float mist=riverDistanceMist(length(wp-cameraPosition),cameraPosition.y,day);
+ color=mix(color,fogHue,mist);
  if(any(isnan(color))||any(isinf(color)))color=base*(ambience+dotL*sha*key)+emit*mix(1.,.026,day);
  gl_FragColor=vec4(min(color,vec3(48.)),tex.a);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
 }`
 export function lightCity(renderer, statics, world) {
-  const v = volume(world.lights),
+  const v = volume(world.lights, innerField),
+    valley = volume(world.lights, valleyField),
     size = 1536
-  const night = directionalDepth(renderer, statics, moonDirection, size),
-    sun = directionalDepth(renderer, statics, sunDirection, size)
+  const night = directionalDepth(renderer, statics, moonDirection, size)
+  const broadNight = directionalDepth(renderer, statics, moonDirection, 1536, true)
+  let sun, broadSun
+  function prepareDay() {
+    if (!sun) sun = directionalDepth(renderer, statics, sunDirection, size)
+    if (!broadSun) broadSun = directionalDepth(renderer, statics, sunDirection, 1536, true)
+  }
   const white = new T.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
   white.needsUpdate = true
   const movePlace = Array.from({ length: maxMoving }, () => new T.Vector4(0, -1000, 0, 1))
@@ -237,6 +240,11 @@ export function lightCity(renderer, statics, world) {
   const common = {
     radiance: { value: v.radiance },
     directions: { value: v.direction },
+    outerRadiance: { value: valley.radiance },
+    outerDirections: { value: valley.direction },
+    airField: { value: districtAir(world.lights) },
+    outerDepth: { value: broadNight.target.depthTexture },
+    outerLightMatrix: { value: broadNight.matrix },
     occTex: { value: night.target.depthTexture },
     lightMatrix: { value: night.matrix },
     sunDir: { value: moonDirection },
@@ -325,12 +333,16 @@ export function lightCity(renderer, statics, world) {
     })
   }
   function mode(day) {
-    const target = day ? sun : night
+    if (day) prepareDay()
+    const target = day ? sun : night,
+      outer = day ? broadSun : broadNight
+    common.outerDepth.value = outer.target.depthTexture
+    common.outerLightMatrix.value = outer.matrix
     common.day.value = day ? 1 : 0
     common.lightMatrix.value = target.matrix
     common.occTex.value = target.target.depthTexture
     common.sunDir.value = day ? sunDirection : moonDirection
-    common.fogHue.value.set(day ? 0xb4c5bb : 0x485571)
+    common.fogHue.value.set(day ? 0x98aeb1 : 0x142032)
   }
   return {
     shade,

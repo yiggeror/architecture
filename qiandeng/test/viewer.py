@@ -19,6 +19,25 @@ from playwright.sync_api import sync_playwright
 
 DEVICES = {"320": (320, 568), "390": (390, 844), "desktop": (1100, 690)}
 LABELS = ["灯河", "水关", "灯市", "云阙", "全城"]
+# World-space roof corners and finials surveyed from the city meshes. Keep
+# these independent of the camera's own fitting volume and its target point.
+PANORAMA_LANDMARKS = {
+    "南栈南檐": [169.01, 15.29, 203.80],
+    "南栈东檐": [211.31, 38.36, 180.42],
+    "南栈上街": [177.38, 47.04, 117.59],
+    "星渡西埠": [12.06, 80.93, -562.53],
+    "岑楼东北脊": [311.40, 205.77, -515.95],
+    "玉京东檐": [351.22, 158.18, -309.91],
+    "桂浦山脊": [-153.10, 125.42, -312.35],
+    "西津西檐": [-152.56, 55.25, 12.68],
+    "书坊西檐": [-175.03, 79.10, -135.74],
+    "山城西关": [-119.62, 125.72, -203.36],
+    "东观楼顶": [85.86, 141.74, -216.74],
+    "凤阙宝顶": [150.09, 202.78, -356.00],
+    "南口灯塔": [-18.06, 13.72, 82.21],
+    "旧城宫阙": [7.80, 84.02, -101.45],
+    "水关正脊": [-3.92, 28.41, -9.10],
+}
 # The official Three.js devtools hook observes both the minified single file and
 # the review build. All camera movement comes from browser input.
 OBSERVER = """window.__THREE_DEVTOOLS__ = new EventTarget();
@@ -28,6 +47,7 @@ __THREE_DEVTOOLS__.addEventListener('observe', ({detail: scene}) => {
   scene.onAfterRender = function(renderer, root, camera, ...args) {
     if (camera.isPerspectiveCamera && (camera.layers.mask & 2)) {
       window.viewerCamera = camera;
+      if (!window.viewerWorld || root.children.some(o=>o.isScene)) window.viewerWorld = root;
       window.viewerFrames = (window.viewerFrames || 0) + 1;
     }
     previous.call(this, renderer, root, camera, ...args);
@@ -244,16 +264,65 @@ class Viewer:
 
     def panorama(self):
         self.button("全城")
+        # The click places the real eye immediately. Wait for a render begun
+        # after the click so the distant camera's far plane has also updated.
+        frame = self.page.evaluate("viewerFrames")
+        self.page.wait_for_function("frame=>viewerFrames>frame", arg=frame)
         start = self.pose()
         gaze = start["gaze"]
         yaw = math.atan2(gaze[0], -gaze[2])
         sweep = 0
-        points = [[x, 12, z] for x in [-58, 58] for z in [-60, 80]] + [[4, 92, -102], [0, 21, -9]]
-        projected = self.page.evaluate(
-            "pts=>pts.map(p=>viewerCamera.position.clone().fromArray(p).project(viewerCamera).toArray())",
-            points,
+        frustum = self.page.evaluate(
+            """pts=>{
+              const scores={}, point=viewerCamera.position.clone(), matrix=viewerCamera.matrixWorld.clone();
+              function keep(name,score) {
+                if (scores[name]===undefined || score>scores[name]) {
+                  scores[name]=score; pts[name]=point.toArray();
+                }
+              }
+              function vertices(o,read) {
+                const pos=o.geometry.attributes.position, count=o.isInstancedMesh?o.count:1;
+                if (!pos || !pos.count) return;
+                for (let i=0;i<count;i++) {
+                  if (o.isInstancedMesh) { o.getMatrixAt(i,matrix); matrix.premultiply(o.matrixWorld); }
+                  else matrix.copy(o.matrixWorld);
+                  for (let j=0;j<pos.count;j++) { point.fromBufferAttribute(pos,j).applyMatrix4(matrix); read(); }
+                }
+              }
+              viewerWorld.traverse(o=>{
+                if (o.isMesh && !o.userData.noCollision && o.material.name==='江城街坊') vertices(o,()=>{
+                  if(point.z < -545) {keep('星渡北檐',-point.z); keep('星渡最高屋脊',point.y);}
+                  if(point.x > 90 && point.z > 90) keep('南栈最南屋角',point.z);
+                });
+                if (!o.isLOD || !o.name.endsWith('街后楼')) return;
+                const ward=o.name.slice(0,-3);
+                if (!['南栈','玉京','桂浦','铜雀','画桥','岑楼','星渡'].includes(ward)) return;
+                const model=o.levels[0].object; model.updateWorldMatrix(true,true);
+                model.traverse(m=>{if(m.isMesh) vertices(m,()=>keep(ward+'后山最高楼尖',point.y));});
+              });
+              const points=Object.fromEntries(Object.entries(pts).map(([name,p])=>{
+                point.fromArray(p);
+                const distance=-point.clone().applyMatrix4(viewerCamera.matrixWorldInverse).z;
+                return [name,[...point.project(viewerCamera).toArray(),distance,...p]];
+              }));
+              return {near:viewerCamera.near,far:viewerCamera.far,points};
+            }""",
+            PANORAMA_LANDMARKS,
         )
-        span = [max(abs(v[i]) for v in projected) for i in range(2)]
+        projected = frustum["points"]
+        for label in ["南栈最南屋角", "星渡北檐", "星渡最高屋脊", "星渡后山最高楼尖", "铜雀后山最高楼尖", "画桥后山最高楼尖"]:
+            require(label in projected, f"missing built landmark {label}")
+        span = [max(abs(p[i]) for p in projected.values()) for i in range(2)]
+        coverage = [
+            (max(p[i] for p in projected.values()) - min(p[i] for p in projected.values())) / 2
+            for i in range(2)
+        ]
+        for name, p in projected.items():
+            x, y, z, distance = p[:4]
+            require(
+                abs(x) < 0.985 and abs(y) < 0.985 and -1 < z < 1 and frustum["near"] < distance < frustum["far"],
+                f"{name} clips out of the actual camera frustum: ({x:.3f}, {y:.3f}, {z:.6f})",
+            )
         self.shot("panorama")
         for _ in range(8):
             self.drag((0.21 * self.width, 0.50 * self.height), (0.76 * self.width, 0.50 * self.height))
@@ -271,11 +340,17 @@ class Viewer:
         require(self.pose()["eye"] == start["eye"], "looking around panned the camera")
         self.data["panorama"] = {
             "eye": start["eye"],
+            "far_clip_m": frustum["far"],
+            "deepest_landmark_m": round(max(p[3] for p in projected.values()), 3),
+            "max_ndc_z": round(max(p[2] for p in projected.values()), 9),
             "max_abs_ndc_xy": [round(a, 3) for a in span],
+            "width_height_coverage": [round(a, 3) for a in coverage],
+            "landmark_projections": {name: [round(p[0], 3), round(p[1], 3)] for name, p in projected.items()},
+            "northern_roof_world": [round(c, 2) for c in projected["星渡北檐"][4:]],
+            "northern_tower_world": [round(c, 2) for c in projected["星渡后山最高楼尖"][4:]],
             "yaw_sweep_deg": round(math.degrees(sweep), 1),
             "pitch_deg": [down, up],
         }
-        require(max(span) < 1, f"city landmark clips out of panorama, NDC {span}")
 
     def orientation(self):
         self.button("全城")
@@ -306,13 +381,25 @@ class Viewer:
 
     def flight(self):
         self.button("灯河")
+        x, y, size = self.stick_geometry()
+        arrival = self.pose()
+        self.touch("touchStart", (1, x, y - size * 0.32))
+        self.page.wait_for_function("p=>Math.hypot(...viewerPose().eye.map((v,i)=>v-p[i]))>=4", arg=arrival["eye"])
+        self.touch("touchEnd")
+        departure = self.pose()
+        arrival_travel = travel(arrival, departure)
+        require(departure["eye"][1] > arrival["eye"][1] + 0.06, "the opening sightline did not climb")
+        self.button("灯河")
         self.pitch(1)
         initial = self.pose()
-        x, y, size = self.stick_geometry()
+        # The opening can stand beside either quay. Use the physical span to
+        # frame its far bank in portrait before looking straight down.
+        aim = self.page.evaluate("""eye=>Math.max(eye[1]+70, 2+
+          Math.max(Math.abs(eye[0]-22),Math.abs(eye[0]+22))/
+          (.78*viewerCamera.aspect*Math.tan(viewerCamera.getEffectiveFOV()*Math.PI/360)))""", initial["eye"])
         self.touch("touchStart", (1, x, y - size * 0.32))
-        # At this height both waterfronts and the street roofs enter a vertical portrait view.
         self.page.wait_for_function(
-            "base => viewerPose().eye[1] >= base + 70", arg=initial["eye"][1], timeout=110000
+            "height => viewerPose().eye[1] >= height", arg=aim, timeout=110000
         )
         self.touch("touchEnd")
         top = self.pose()
@@ -333,22 +420,20 @@ class Viewer:
         downward = travel(overhead, self.pose())
         self.pitch(1)
         before_reverse = self.pose()
-        self.touch("touchStart", (1, x, y + size * 0.32))
-        self.page.wait_for_function("base => viewerPose().eye[1] <= base + 4", arg=initial["eye"][1])
-        self.touch("touchMove", (1, x, y + size * 0.077))
-        self.page.wait_for_function("base => viewerPose().eye[1] <= base + .45", arg=initial["eye"][1])
-        self.touch("touchEnd")
-        # Finish with the thumb just outside the axial dead zone. The release
-        # may land one rendered frame beyond its target on software Chromium.
+        # Ease the physical stick back towards neutral as the rooflines draw
+        # near. This also works on software-rendered frames over a second long.
         target = initial["eye"][1]
-        for _ in range(4):
-            error = target - self.pose()["eye"][1]
+        for _ in range(14):
+            start_y = self.pose()["eye"][1]
+            error = target - start_y
             if abs(error) <= 0.5:
                 break
             sign = math.copysign(1, error)
-            self.touch("touchStart", (1, x, y - sign * size * 0.044))
+            throw = 0.75 if abs(error) > 28 else 0.48 if abs(error) > 8 else 0.29 if abs(error) > 2 else 0.15
+            self.touch("touchStart", (1, x, y - sign * size * 0.31 * throw))
             self.page.wait_for_function(
-                "([y,sign])=>sign*(viewerPose().eye[1]-y) >= -.10", arg=[target, sign]
+                "([y,sign,advance])=>sign*(viewerPose().eye[1]-y)>=advance",
+                arg=[start_y, sign, max(0.12, abs(error)*0.65)],
             )
             self.touch("touchEnd")
         landing = self.pose()
@@ -360,6 +445,7 @@ class Viewer:
         self.page.wait_for_timeout(400)
         require(self.pose() == landing, "release did not hover")
         self.data["flight"] = {
+            "initial_forward_m": round(arrival_travel, 2),
             "climb_m": round(climb, 2),
             "look_down_forward_m": round(downward, 2),
             "reverse_m": round(descent, 2),

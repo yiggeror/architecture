@@ -8,19 +8,36 @@ import { lightRegistry, lightCity } from './lighting.js'
 import { navigation } from './walk.js'
 import { courtyardCollision } from './collision.js'
 import { river } from './river.js'
+import { lowerRiver } from './reachWater.js'
 import { film } from './film.js'
 import { garden, gardenBasin } from './garden.js'
 import { headwater, headwaterMotion } from './headwater.js'
 import { harbor } from './harbor.js'
 import { land, landMotion } from './land.js'
 import { wards } from './wards.js'
+import { reachWards } from './reachWards.js'
+import { reachRoofline } from './reachRoofline.js'
+import { reachLand } from './reachLand.js'
+import { reachBridges } from './reachBridges.js'
+import { ridgePalaces } from './ridgePalaces.js'
 import { watergate } from './watergate.js'
 import { summit, summitMotion } from './summit.js'
 import { festivalSky, launchQuays } from './festivalSky.js'
 import { weather } from './weather.js'
 import { procession } from './procession.js'
+import { reachFerries } from './reachFerries.js'
 const root = document.querySelector('#court'),
   status = document.querySelector('#loading')
+const phaseButtons = document.querySelectorAll('button[data-mode]')
+let applyLighting
+function mode(day) {
+  const phase = day ? 'day' : 'night'
+  document.documentElement.dataset.mode = phase
+  for (const button of phaseButtons)
+    button.setAttribute('aria-pressed', String(button.dataset.mode === phase))
+  applyLighting?.(day)
+}
+for (const button of phaseButtons) button.addEventListener('click', () => mode(button.dataset.mode === 'day'))
 const palaceRise = 25.2,
   palaceEast = 3.8
 function highPalace(b, m, world) {
@@ -59,8 +76,13 @@ async function openCity() {
   const regionStats = []
   for (const [build, label] of [
     [land, '云崖'],
+    [reachLand, '沿江山城'],
+    [reachBridges, '长桥'],
     [watergate, '水关'],
     [wards, '灯市'],
+    [reachWards, '沿江百坊'],
+    [reachRoofline, '江岸层楼'],
+    [ridgePalaces, '山城金阙'],
     [headwater, '天瀑'],
     [highPalace, '云阙'],
     [harbor, '码头'],
@@ -73,35 +95,48 @@ async function openCity() {
       first = statics.children.length
     build(b, m, world)
     b.finish()
-    const meshes = statics.children.slice(first)
+    const meshes = []
+    for (const object of statics.children.slice(first)) {
+      object.traverse((mesh) => {
+        if (mesh.isMesh) meshes.push(mesh)
+      })
+    }
     regionStats.push({
       name: label,
       meshes: meshes.length,
       faces: meshes.reduce(
-        (n, o) => n + (o.geometry?.index?.count ?? o.geometry?.attributes.position.count ?? 0) / 3,
+        (n, o) => n + (o.geometry.index?.count || o.geometry.attributes.position.count) / 3,
         0
       ),
     })
   }
   status.textContent = '正在点亮灯火…'
   await tick()
-  const air = weather(scene, world)
   const northFalls = headwaterMotion(moving, m, world)
   const dais = new T.Group()
   dais.position.set(palaceEast, palaceRise, 0)
   moving.add(dais)
   const fleet = procession(moving, m, world),
+    ferries = reachFerries(moving, m, world),
     palace = summitMotion(dais, m, world),
     cliffs = landMotion(moving, m, world)
   const lighting = lightCity(renderer, statics, world),
     water = river(scene, statics, renderer, lighting.common, software)
   const gardenWater = river(scene, statics, renderer, lighting.common, software, gardenBasin())
-  water.mesh.updateMatrixWorld(true)
+  const valleyWater = river(scene, statics, renderer, lighting.common, software, lowerRiver())
+  const waters = [water, gardenWater, valleyWater]
+  const air = weather(
+    scene,
+    world,
+    statics,
+    waters.map((surface) => surface.mesh),
+    lighting.common
+  )
   const gears = clockworkContact(dais)
   const collision = courtyardCollision(
     statics,
-    water.mesh,
-    (a, b, r) => fleet.block(a, b, r) || gears.block(a, b, r)
+    waters.map((surface) => surface.mesh),
+    (a, b, r) => fleet.block(a, b, r) || ferries.block(a, b, r) || gears.block(a, b, r)
   )
   const detail = scenicDetail(statics)
   lighting.shade(statics, software)
@@ -115,48 +150,45 @@ async function openCity() {
   let previousWidth = 0,
     previousHeight = 0
   function resize() {
+    const changed = previousWidth !== innerWidth || previousHeight !== innerHeight
+    const limit = software ? 1 : Math.min(1.65, Math.sqrt(2190000 / (innerWidth * innerHeight)))
+    const ratio = Math.min(devicePixelRatio, Math.max(0.66, limit)) * quality
+    if (!changed && renderer.getPixelRatio() === ratio) return
     updateLens(camera, innerWidth, innerHeight)
-    if (previousWidth !== innerWidth || previousHeight !== innerHeight) {
+    if (changed) {
       walk.resize()
       previousWidth = innerWidth
       previousHeight = innerHeight
     }
-    const limit = software ? 1 : Math.min(1.65, Math.sqrt(2190000 / (innerWidth * innerHeight)))
-    renderer.setPixelRatio(Math.min(devicePixelRatio, Math.max(0.66, limit)) * quality)
+    renderer.setPixelRatio(ratio)
     renderer.setSize(innerWidth, innerHeight)
     renderer.getDrawingBufferSize(size)
+    camera.userData.viewportHeight = size.y
     cinema.size(size.x, size.y)
-    water.invalidate()
-    gardenWater.invalidate()
+    for (const surface of waters) surface.invalidate()
   }
-  function mode(next) {
+  applyLighting = (next) => {
     day = Boolean(next)
-    scene.background = new T.Color(day ? 0xb6c9c5 : 0x303b58)
-    scene.fog = new T.FogExp2(day ? 0xb5c5bb : 0x485571, day ? 0.00365 : 0.0052)
+    scene.background = new T.Color(day ? 0xb6c9c5 : 0x101b2e)
+    scene.fog = new T.FogExp2(day ? 0x98aeb1 : 0x142032, day ? 0.00188 : 0.0023)
     lighting.mode(day)
     cinema.mode(day)
     sky.mode(day)
     air.mode(day)
-    water.invalidate()
-    gardenWater.invalidate()
-    document.documentElement.dataset.mode = day ? 'day' : 'night'
-    for (const btn of document.querySelectorAll('button[data-mode]'))
-      btn.setAttribute('aria-pressed', String(btn.dataset.mode === (day ? 'day' : 'night')))
+    for (const surface of waters) surface.invalidate()
   }
-  for (const button of document.querySelectorAll('button[data-mode]'))
-    button.addEventListener('click', () => mode(button.dataset.mode === 'day'))
   addEventListener('resize', resize)
   scene.addEventListener('sky-painted', () => {
-    water.invalidate()
-    gardenWater.invalidate()
+    for (const surface of waters) surface.invalidate()
   })
   resize()
-  mode(false)
+  mode(document.documentElement.dataset.mode === 'day')
   let elapsed = 0,
     started = false,
     last = performance.now(),
     measure = 0,
     total = 0
+  const cityCentre = new T.Vector3(65, 71, -217)
   const lastEye = camera.position.clone(),
     lastRotation = camera.quaternion.clone()
   let lastMotion = -1e5,
@@ -165,6 +197,7 @@ async function openCity() {
     northFalls.update(t, day)
     sky.update(t, day)
     fleet.update(t, day, camera)
+    ferries.update(t, day, camera)
     palace.update(t, day)
     cliffs.update(t, day)
     air.update(t, day)
@@ -172,10 +205,11 @@ async function openCity() {
     gears.update()
     if (
       fleet.protect(camera.position, collision.clearance) ||
+      ferries.protect(camera.position, collision.clearance) ||
       gears.protect(camera.position, collision.clearance)
     )
       camera.updateMatrixWorld()
-    const far = Math.max(990, 2 ** Math.ceil(Math.log2(camera.position.length() + 180)))
+    const far = Math.max(990, 2 ** Math.ceil(Math.log2(camera.position.distanceTo(cityCentre) + 590)))
     if (far !== camera.far) {
       camera.far = far
       camera.updateProjectionMatrix()
@@ -193,14 +227,12 @@ async function openCity() {
         swift = next
         lighting.fast(swift)
         cinema.invalidate()
-        water.invalidate()
-        gardenWater.invalidate()
+        for (const surface of waters) surface.invalidate()
       }
     }
     detail.update(camera, size.y, software || window.matchMedia('(pointer: coarse)').matches)
     const stamp = t * 1000
-    water.reflect(camera, stamp)
-    gardenWater.reflect(camera, stamp)
+    for (const surface of waters) surface.reflect(camera, stamp)
     cinema.draw(stamp)
   }
   function frame(now) {
@@ -262,8 +294,7 @@ async function openCity() {
         pinned = true
         quality = 1
         resize()
-        water.invalidate()
-        gardenWater.invalidate()
+        for (const surface of waters) surface.invalidate()
         draw(t)
       },
       pose(p, q, t = 0) {

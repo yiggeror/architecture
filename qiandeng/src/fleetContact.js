@@ -53,8 +53,8 @@ export function protectPassengers(ships) {
       if (
         Math.abs(eye.x - g.position.x) > r ||
         Math.abs(eye.z - g.position.z) > r ||
-        eye.y < -0.88 ||
-        eye.y > 5.15
+        eye.y < g.position.y - 0.88 ||
+        eye.y > g.position.y + (ship.top ?? 5.15)
       )
         continue
       local.copy(eye).applyMatrix4(ship.inverse)

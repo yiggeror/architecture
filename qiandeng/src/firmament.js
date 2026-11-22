@@ -1,7 +1,7 @@
 import * as T from 'three'
 import { generator } from './mesh.js'
 
-const moon = new T.Vector3(-0.23, 0.42, -0.88).normalize()
+const moon = new T.Vector3(-0.87, 0.74, -0.1).normalize()
 const sun = new T.Vector3(-0.65, 0.57, 0.49).normalize()
 
 // This painter runs unchanged in a worker and in the synchronous first preview.
@@ -241,17 +241,17 @@ function makeSkyPainter(moon, sun, generator) {
   }
 
   const nightColors = {
-    top: [28, 32, 72],
-    high: [73, 73, 114],
-    horizon: [121, 125, 150],
-    twilight: [25, -2, 7],
-    opening: [172, 195, 196],
-    fibre: [153, 153, 182],
-    shadow: [37, 29, 65],
-    bounce: [43, 53, 76],
-    pearl: [178, 191, 204],
-    below: [53, 61, 90],
-    underLight: [156, 177, 191],
+    top: [4, 8, 17],
+    high: [9, 16, 29],
+    horizon: [18, 29, 43],
+    twilight: [1, 1, 2],
+    opening: [56, 74, 94],
+    fibre: [19, 30, 46],
+    shadow: [4, 8, 16],
+    bounce: [7, 12, 18],
+    pearl: [31, 46, 63],
+    below: [6, 11, 22],
+    underLight: [39, 56, 74],
   }
   const dayColors = {
     top: [61, 128, 177],
@@ -291,7 +291,7 @@ function makeSkyPainter(moon, sun, generator) {
       const latitude = Math.PI * ((row + 0.5) / height - 0.5)
       const y = Math.sin(latitude),
         cosLat = Math.cos(latitude)
-      const horizontalHaze = Math.exp(-Math.abs(y - 0.025) * 4.6)
+      const horizontalHaze = Math.exp(-Math.abs(y - (day ? 0.025 : 0.009)) * (day ? 4.6 : 13.6))
       for (let col = 0; col < width; col++) {
         const x = cosLat * ax[col],
           z = cosLat * az[col]
@@ -302,15 +302,18 @@ function makeSkyPainter(moon, sun, generator) {
         const lift = x * upx + y * horizontal + z * upz
         const shear = lift + cross * (day ? 0.31 : 0.22) + cross * cross * 0.26
         const gap = Math.max(0, alignment) ** 3 * Math.exp(-(3.1 * cross * cross + 19 * shear * shear))
-        const halo = nearLight ** 18
-        const pearl = nearLight ** 95
+        const daylightHalo = day ? Math.min(0.96, nearLight ** 18 * 0.68 + nearLight ** 95 * 0.28) : 0
         const dusk = Math.max(0, 0.49 * x + 0.86 * z) * (1 - 0.6 * Math.abs(y))
         const high = 1 - Math.max(0, y) ** 0.66
         for (let s = 0; s < 3; s++) {
-          hazeColor[s] = mix(p.horizon[s], p.opening[s], nearLight ** 3 * 0.73)
+          hazeColor[s] = mix(
+            p.horizon[s],
+            p.opening[s],
+            day ? nearLight ** 3 * 0.73 : nearLight ** 29 * 0.056
+          )
           hazeColor[s] += p.twilight[s] * dusk
           background[s] = mix(mix(p.top[s], p.high[s], high), hazeColor[s], horizontalHaze * 0.91)
-          background[s] = mix(background[s], p.opening[s], Math.min(0.96, halo * 0.68 + pearl * 0.28))
+          background[s] = mix(background[s], p.opening[s], daylightHalo)
         }
         // A separate high veil shears over the cumulus. Fine parallel filaments
         // follow a curved jet and disappear into stretches of clear sky.
@@ -327,7 +330,7 @@ function makeSkyPainter(moon, sun, generator) {
           (0.09 + 0.48 * smooth(0.29, 0.71, twist)) *
           (0.4 + 0.3 * needle + 0.3 * stria) *
           smooth(-0.04, 0.26, y)
-        for (let s = 0; s < 3; s++) background[s] = mix(background[s], p.fibre[s], fibre)
+        for (let s = 0; s < 3; s++) background[s] = mix(background[s], p.fibre[s], fibre * (day ? 1 : 0.67))
 
         let transmission = 0
         if (y > -0.13) {
@@ -335,21 +338,31 @@ function makeSkyPainter(moon, sun, generator) {
           // resolved at screen resolution underneath passing translucent cloud.
           const curve = 0.032 * (1 - y * y)
           const byHeight = (h) => (2 * h) / (y + Math.sqrt(y * y + 2 * curve * h))
-          const base = day ? 3.35 : 3.85
+          // A shallow, wind-stretched stratus deck crosses the night sky. In daylight
+          // the same atmosphere opens into a much deeper sunlit cumulus field.
+          const base = day ? 3.35 : 3.07
+          const thickness = day ? 1 : 0.38
           const t0 = byHeight(base),
-            t1 = byHeight(base + depth)
+            t1 = byHeight(base + depth * thickness)
           const n = Math.min(38, Math.ceil((t1 - t0) * 6.3))
           const dt = (t1 - t0) / n
           let opacity = 0
           canopy.fill(0)
-          const thinning = 0.08 + gap * (day ? 0.63 : 0.8)
+          const thinning = day ? 0.08 + gap * 0.63 : 0.19 + gap * 0.63
           for (let i = 0; i < n; i++) {
             const t = t0 + (i + 0.5) * dt
-            const h = t * (y + 0.5 * curve * t) - base
-            sampleVolume(x * t * 1.11 + (day ? 6.5 : 12.3), h, z * t * 1.11 + (day ? 3.8 : 8.7), direct)
+            const h = (t * (y + 0.5 * curve * t) - base) / thickness
+            if (day) sampleVolume(x * t * 1.11 + 6.5, h, z * t * 1.11 + 3.8, direct)
+            else
+              sampleVolume(
+                (0.82 * x + 0.38 * z) * t * 0.72 + 12.3,
+                h,
+                (0.82 * z - 0.38 * x) * t * 1.56 + 8.7,
+                direct
+              )
             const den = Math.max(0, lightOut.density - thinning) * (1 - thinning)
             if (den < 0.004) continue
-            const alpha = (1 - opacity) * (1 - Math.exp(-3.8 * den * dt))
+            const alpha = (1 - opacity) * (1 - Math.exp(-(day ? 3.8 : 1.85) * den * dt))
             const lambert = lightOut.direct,
               ambient = lightOut.ambient
             const lining = Math.pow(nearLight, 7) * (1 - den) * lambert * 0.46
@@ -460,7 +473,8 @@ function makeSkyPainter(moon, sun, generator) {
             opacity += alpha
           }
           const veil = smooth(-0.14, -0.04, y) * (1 - smooth(0.15, 0.19, y)) * smooth(0.19, 0.74, bank)
-          for (let s = 0; s < 3; s++) color[s] = mix(color[s], towers[s] + (1 - opacity) * color[s], veil)
+          for (let s = 0; s < 3; s++)
+            color[s] = mix(color[s], towers[s] + (1 - opacity) * color[s], veil * (day ? 1 : 0.25))
         }
         const at = (row * width + col) * 4
         const grain = noise(x * 201, y * 201, z * 201) - 0.5
@@ -583,9 +597,9 @@ export function firmament(scene) {
         float filaments = smoothstep(.38,.78,wisps.y+(.5-weather.g)*.18);
         float bank = smoothstep(-.04,.27,d.y)*(veil*.61+filaments*.32);
         float againstLight = pow(max(0.,dot(d,luminary)),12.);
-        vec3 mist=mix(mix(vec3(.40,.414,.535),vec3(.80,.835,.81),againstLight),
+        vec3 mist=mix(mix(vec3(.048,.078,.119),vec3(.112,.148,.192),againstLight),
                       mix(vec3(.79,.82,.84),vec3(.99,.91,.77),againstLight),daylight);
-        ink.rgb=mix(ink.rgb,mist,bank*mix(.19,.27,daylight));
+        ink.rgb=mix(ink.rgb,mist,bank*mix(.125,.27,daylight));
         ink.a *= 1.-bank*.67;
         // A thin broken scud passes in front of the bright gap. Its upper edge
         // gathers silver light as its dense middle obscures the lunar markings.
@@ -599,24 +613,29 @@ export function firmament(scene) {
         float fringe=exp(-pow((fold-thickness*.74)/(.015+.018*wisps.x),2.));
         float scud=exp(-pow(fold/thickness,2.))*(.40+.55*smoothstep(.23,.72,wisps.x));
         scud*=pow(max(0.,dot(d,luminary)),4.)*(1.-smoothstep(.27,.40,abs(passage)));
-        vec3 vapor=mix(vec3(.42,.46,.55),vec3(.73,.75,.78),daylight)+fringe*.11;
+        vec3 vapor=mix(vec3(.073,.103,.146),vec3(.73,.75,.78),daylight)+fringe*mix(.018,.11,daylight);
         ink.rgb=mix(ink.rgb,vapor,scud*mix(.49,.32,daylight));
         ink.a*=1.-scud*mix(.95,.63,daylight);
+        // Lunar diffraction follows the moon itself, behind the moving rain.
+        float lunarAngle=length(d-luminary);
+        ink.rgb+=(1.-daylight)*ink.a*vec3(.031,.040,.048)*exp(-lunarAngle*lunarAngle/.00064);
         // Convert painted display values to scene radiance for the filmic compositor.
         vec3 v = pow(ink.rgb,vec3(2.2));
         vec3 a = vec3(1.)-.983729*v;
         vec3 b = .0245786-.432951*v;
         vec3 c = -.000090537-.238081*v;
         vec3 color = .60*(-b+sqrt(b*b-4.*a*c))/(2.*a);
-        float radius = mix(.033,.023,daylight);
+        float radius = mix(.0102,.023,daylight);
         vec2 disc = vec2(dot(d,right),dot(d,up))/radius;
         float r = length(disc);
         float aa = max(fwidth(r),.002);
         if (dot(d,luminary)>.99 && r<1.+aa) {
           float maria = .57*noise2(disc*3.4+9.2)+.28*noise2(disc*8.4-3.6)+.15*noise2(disc*23.+12.);
-          vec3 pearl = mix(vec3(.91,1.09,1.08),vec3(2.8,2.65,1.91),smoothstep(.31,.76,maria));
-          pearl *= .87+.13*sqrt(max(0.,1.-r*r));
-          vec3 body = mix(pearl,vec3(4.8,3.8,2.55),daylight);
+          float radialZ=sqrt(max(0.,1.-r*r));
+          float phase=smoothstep(-.04,.10,-.73*disc.x+.23*disc.y+.36*radialZ);
+          vec3 pearl=mix(vec3(.38,.45,.49),vec3(.89,.93,.86),smoothstep(.31,.76,maria));
+          pearl=mix(color*.86,pearl*(.81+.19*radialZ),phase);
+          vec3 body=mix(pearl,vec3(4.8,3.8,2.55),daylight);
           color = mix(color,body,(1.-smoothstep(1.-aa,1.+aa,r))*ink.a*.97);
         }
         gl_FragColor = vec4(color,1.);

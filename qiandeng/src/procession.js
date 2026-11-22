@@ -5,11 +5,12 @@ import { cutPaper, pennants, waterOfferings } from './fleetOrnaments.js'
 import { locate, traffic } from './fleetRoute.js'
 import { wakes } from './fleetWater.js'
 import { protectPassengers } from './fleetContact.js'
+import { boatDistance } from './fleetDistance.js'
 import { riverPeople } from './peopleRiver.js'
 
 // Swept sphere against a local hull strake or cabin member. A boat can approach
 // a hovering eye; in that case the viewer can immediately move back out.
-function touches(a, b, box, r) {
+export function sweptBox(a, b, box, r) {
   let first = 0,
     last = 1,
     inA = true,
@@ -61,6 +62,7 @@ export function procession(scene, m, world) {
   const surface = wakes(scene, traffic),
     people = riverPeople(scene, m, ships),
     flags = pennants(ships, m)
+  const detail = boatDistance(ships, m)
   const a = new T.Vector3(),
     b = new T.Vector3()
   const displace = protectPassengers(ships),
@@ -99,13 +101,14 @@ export function procession(scene, m, world) {
         item.light.strength = day ? 0.028 : 1 + 0.035 * Math.sin(t * 3.61 + i)
       }
     }
+    detail(camera)
     people(t, day, camera)
     flags(t)
     lotus(t)
     surface(t, day)
   }
   function block(from, to, radius = 0.16) {
-    for (const dock of docks) if (touches(from, to, dock, radius)) return true
+    for (const dock of docks) if (sweptBox(from, to, dock, radius)) return true
     for (const ship of ships) {
       const g = ship.group,
         r = ship.spec.length * 0.55 + radius
@@ -120,7 +123,7 @@ export function procession(scene, m, world) {
         continue
       a.copy(from).applyMatrix4(ship.inverse)
       b.copy(to).applyMatrix4(ship.inverse)
-      for (const box of ship.boxes) if (touches(a, b, box, radius)) return true
+      for (const box of ship.boxes) if (sweptBox(a, b, box, radius)) return true
     }
     return false
   }

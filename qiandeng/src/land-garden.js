@@ -1,6 +1,6 @@
 import * as T from 'three'
 import { cross, generator, sub, unit } from './mesh.js'
-import { LandBatch, blend, limit, mix, noise, panel, rgb, smooth, tau, tint, top } from './land-kit.js'
+import { LandBatch, blend, mix, noise, panel, rgb, tau, tint, top } from './land-kit.js'
 
 const pine = [0x294b4c, 0x3a6057, 0x4d7160, 0x5d8069, 0x41605a].map(rgb)
 const trunk = rgb(0x695a50),
@@ -146,7 +146,9 @@ function pineTree(b, m, rng, x, y, z, h, angle, detail = true) {
 }
 
 function pondPines(b, m) {
-  const soil = b.scene.children.find((mesh) => mesh.userData.terrainHull && mesh.material === m.upperGardens)
+  const soil = b.scene.children.find(
+    (mesh) => mesh.userData.terrainHull && mesh.material === m.upperGardens
+  )
   const ray = new T.Raycaster(new T.Vector3(), new T.Vector3(0, -1, 0))
   function ground(x, z) {
     ray.ray.origin.set(x, 40, z)
@@ -226,7 +228,16 @@ function pondPines(b, m) {
       const a = lean + 1.56 * j + 0.23 * rng(),
         foot = shoot([x, floor, z], a, height * (0.11 + 0.055 * rng()), 0)
       foot[1] = ground(foot[0], foot[2]) - 0.06
-      b.tube(m.mountainBark, local(0.012, 0.049, 0.008), foot, width * 0.69, width * 0.075, 5, timber, false)
+      b.tube(
+        m.mountainBark,
+        local(0.012, 0.049, 0.008),
+        foot,
+        width * 0.69,
+        width * 0.075,
+        5,
+        timber,
+        false
+      )
     }
     const branches = small ? 5 : 8
     for (let j = 0; j < branches; j++) {
@@ -599,7 +610,11 @@ export function plantedShoulders(b, m, grade, world, sampleCliff, arc) {
           )
         }
         if (k % 2 === 1) {
-          const end = sampleCliff(base + (k % 4 === 1 ? 1 : -1) * (0.14 + 0.4 * rng()), 0.06 + t * span, 0.25)
+          const end = sampleCliff(
+            base + (k % 4 === 1 ? 1 : -1) * (0.14 + 0.4 * rng()),
+            0.06 + t * span,
+            0.25
+          )
           b.face(
             m.karstNeedle,
             [q, [q[0] + 0.12, q[1] - 0.09, q[2] + 0.04], end, [q[0] - 0.1, q[1] - 0.12, q[2] - 0.08]],
@@ -612,456 +627,96 @@ export function plantedShoulders(b, m, grade, world, sampleCliff, arc) {
   }
 }
 
-// Each range is a complete folded landform with several off-axis summits.
-// The central notch behind the palace and the southern open water stay clear.
+// Long, low outcrops sit beyond the outer wards. The southwestern reach
+// remains open to the cloud sea when viewed from the city or either bank.
 const ranges = [
-  [-128, 29, 40, 43, 38, -0.42],
-  [-142, -38, 49, 59, 65, -0.24],
-  [-124, -112, 42, 48, 46, -0.68],
-  [155, 46, 49, 44, 36, 0.52],
-  [129, -45, 40, 48, 57, 0.22],
-  [148, -117, 47, 55, 64, 0.71],
-  [-82, -186, 40, 47, 48, -0.63],
-  [83, -202, 43, 51, 62, 0.57],
-  [-14, -231, 44, 28, 27, 0.17],
-  [-102, 144, 37, 39, 43, 0.49],
-  [113, 154, 42, 34, 41, -0.78],
-  [-207, 59, 66, 59, 66, 0.28],
-  [-232, -76, 68, 81, 88, -0.42],
-  [-160, -219, 66, 54, 73, -0.56],
-  [210, 0, 68, 74, 81, -0.37],
-  [209, -176, 74, 59, 86, 0.42],
-  [167, 202, 59, 58, 66, 0.53],
-  [-179, 207, 61, 62, 64, -0.26],
-  [35, 246, 51, 41, 41, -0.35],
-  [-67, 281, 63, 41, 42, -0.55],
-  [5, -340, 95, 64, 49, 0.32],
-  [323, 115, 84, 74, 86, 0.77],
-  [-336, 103, 95, 88, 83, 0.29],
-  [281, -294, 92, 69, 90, -0.53],
-  [-277, -287, 89, 75, 94, 0.92],
+  [-345, -185, 83, 25, 15, -0.83],
+  [-286, -574, 100, 28, 17, -0.24],
+  [-41, -735, 85, 24, 13, 0.36],
+  [282, -709, 106, 32, 20, -0.28],
+  [395, -143, 94, 25, 16, 1.02],
 ]
-const uprightRock = [0x586b73, 0x657979, 0x777e76, 0x8f9182, 0x6f7170].map(rgb)
-function towerCrag(b, m, rng, cx, y, cz, w, d, h, yaw, lean, fang, ground) {
-  const co = Math.cos(yaw),
-    si = Math.sin(yaw)
-  const contour = [
-    [-0.48, -0.34],
-    [-0.15, -0.53],
-    [0.37, -0.42],
-    [0.51, -0.08],
-    [0.43, 0.36],
-    [0.06, 0.48],
-    [-0.4, 0.39],
-    [-0.54, 0.02],
-  ]
-  const crack = contour.map(() => 0.82 + 0.29 * rng()),
-    crown = contour.map(() => rng() - 0.5)
-  const bands = [
-    [0, 1.09],
-    [0.19, 1],
-    [0.33, 0.88],
-    [0.51, 0.8],
-    [0.62, 0.85],
-    [0.68, 0.7],
-    [0.86, 0.67],
-    [1, fang ? 0.22 : 0.54],
-  ]
-  const rings = bands.map(([v, r], i) =>
-    contour.map(([u, t], j) => {
-      const k = crack[j] * (r + 0.086 * Math.sin(j * 2.3 + v * 5.2))
-      const uu = w * (u * k + v * lean + 0.068 * Math.sin(v * 6.3 + j) * Math.sin(Math.PI * v)),
-        vv = d * (t * k + 0.1 * v * v)
-      const dip = (0.032 + 0.13 * v) * u + 0.05 * Math.sin(j * 1.51 + v * 3.12) * Math.sin(v * Math.PI)
-      const x = cx + uu * co + vv * si,
-        z = cz - uu * si + vv * co
-      let elevation = y + h * (v + dip + crown[j] * (i === 7 ? 0.21 : 0.055))
-      if (i < 3) {
-        const seat = ground(x, z) - 1.7
-        elevation += Math.min(0, seat - y) * [1, 0.63, 0.22][i]
-      }
-      return [x, elevation, z]
-    })
-  )
-  const mat = m.mountainGranite,
-    col = blend(uprightRock[Math.floor(rng() * 5)], rgb(0x657c73), 0.23)
-  for (let j = 0; j < contour.length; j++) {
-    const k = (j + 1) % contour.length,
-      face = tint(col, 0.85 + 0.23 * rng())
-    for (let i = 0; i < bands.length - 1; i++) {
-      const p = [rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]]
-      const light = i === 3 || i === 5
-      const c = light ? blend(face, uprightRock[3], 0.19) : face
-      panel(
-        b,
-        mat,
-        p,
-        [tint(c, 0.93), tint(c, 0.82), tint(c, 1.04), tint(c, 1.13)],
-        [
-          [0, p[0][1]],
-          [w * 0.3, p[1][1]],
-          [w * 0.3, p[2][1]],
-          [0, p[3][1]],
-        ]
-      )
-    }
-  }
-  const rim = rings.at(-1),
-    ctr = rim.reduce((v, p) => v.map((s, i) => s + p[i] / rim.length), [0, fang ? h * 0.075 : h * 0.025, 0])
-  for (let j = 0; j < rim.length; j++)
-    top(b, mat, [rim[j], rim[(j + 1) % rim.length], ctr], blend(col, moss, 0.36))
-  return ctr
-}
-function naturalArch(b, m, rng, center, w, h, a, ground) {
-  const co = Math.cos(a),
-    si = Math.sin(a),
-    [cx, y, cz] = center
-  const p = (u, t, z) => [cx + co * u + si * z, y + t, cz - si * u + co * z]
-  for (const sign of [-1, 1]) {
-    const foot = p(sign * w * 0.49, -h * 0.37, 0)
-    towerCrag(b, m, rng, ...foot, w * 0.52, w * 0.42, h * 1.19, a, sign * 0.17, false, ground)
-  }
-  const nodes = []
-  for (let j = 0; j <= 10; j++) {
-    const t = j / 10,
-      u = (t - 0.5) * w * 1.22,
-      arch = Math.pow(Math.sin(Math.PI * t), 0.75)
-    const lower = h * (0.34 + 0.57 * arch) + 0.8 * Math.sin(t * 10.5 + 0.3)
-    const upper = lower + h * (0.23 + 0.085 * Math.sin(t * 6.1 + 0.84))
-    const d = w * (0.117 + 0.03 * Math.cos(t * 7 + 1))
-    nodes.push([p(u, lower + 0.15, -d), p(u, lower, d), p(u, upper, d * 0.81), p(u, upper + 0.33, -d * 0.94)])
-  }
-  const palette = [uprightRock[0], uprightRock[2], blend(moss, uprightRock[3], 0.3), uprightRock[4]]
-  for (let i = 0; i < nodes.length - 1; i++)
-    for (let j = 0; j < 4; j++) {
-      const k = (j + 1) % 4,
-        p = [nodes[i][j], nodes[i][k], nodes[i + 1][k], nodes[i + 1][j]]
-      b.face(m.mountainGranite, p, tint(palette[j], 0.94 + 0.13 * rng()))
-    }
-  return nodes[7][2]
-}
-function distantPine(b, m, rng, x, y, z, h, a) {
-  const dx = Math.cos(a),
-    dz = Math.sin(a)
-  const stem = [
-    [x, y - 0.55, z],
-    [x + 0.035 * h * dx, y + 0.38 * h, z + 0.035 * h * dz],
-    [x + 0.21 * h * dx - 0.04 * h * dz, y + 0.71 * h, z + 0.21 * h * dz + 0.04 * h * dx],
-    [x + 0.28 * h * dx, y + h, z + 0.28 * h * dz],
-  ]
-  for (let j = 0; j < 3; j++)
-    b.tube(
-      m.mountainBark,
-      stem[j],
-      stem[j + 1],
-      h * (0.061 - 0.013 * j),
-      h * (0.044 - 0.012 * j),
-      4,
-      trunk,
-      false
-    )
-  for (let i = 0; i < 5; i++) {
-    const t = 0.28 + 0.135 * i,
-      k = Math.min(2, Math.floor(t * 3)),
-      f = t * 3 - k
-    const root = stem[k].map((v, j) => mix(v, stem[k + 1][j], f)),
-      yaw = a + (i % 2 ? 1 : -1) * (1.1 + 0.56 * rng()) + 0.56 * Math.sin(i * 2.4)
-    const spread = h * (0.31 - 0.032 * i),
-      u = Math.cos(yaw),
-      v = Math.sin(yaw)
-    const foot = [root[0] + u * spread * 0.67, root[1] + h * 0.11, root[2] + v * spread * 0.67]
-    b.tube(m.mountainBark, root, foot, h * (0.026 - 0.002 * i), h * 0.009, 3, trunk, false)
-    for (let j = 0; j < 5; j++) {
-      const az = yaw - 1.72 + 0.84 * j + 0.18 * (rng() - 0.5),
-        len = spread * (1.06 + 0.25 * rng())
-      needleSpray(
-        b,
-        m,
-        foot,
-        az,
-        len,
-        spread * (0.36 + 0.12 * rng()),
-        h * (0.033 + 0.046 * rng()),
-        j % 2 ? 0.95 : 0.27,
-        [0.83 + 0.16 * rng(), 0.87 + 0.13 * rng(), 0.78 + 0.19 * rng()]
-      )
-    }
-  }
-  for (let i = 0; i < 6; i++)
-    needleSpray(
-      b,
-      m,
-      stem[3],
-      a + (tau * i) / 6,
-      h * 0.23,
-      h * 0.1,
-      h * 0.075,
-      i % 2 ? 0.73 : 0.23,
-      [0.94, 1, 0.86]
-    )
-}
-function massif(b, m, tuple, index) {
-  const [cx, cz, rx, rz, h, a] = tuple,
-    rng = generator(43000 + index * 89)
-  const co = Math.cos(a),
-    si = Math.sin(a),
-    near = index < 11,
-    n = near ? 25 : 15
-  const forestZones = Array.from({ length: near ? 5 : 3 }, () => [
-    (rng() - 0.5) * 0.97,
-    (rng() - 0.5) * 1.04,
-    0.21 + 0.16 * rng(),
-  ])
-  const peaks = [
-    [-0.12 + (rng() - 0.5) * 0.22, -0.07, 0.3 + 0.12 * rng(), 0.36 + 0.1 * rng(), 1],
-    [-0.43, -0.29 + 0.23 * rng(), 0.21 + 0.08 * rng(), 0.29 + 0.07 * rng(), 0.49 + 0.38 * rng()],
-    [0.39, 0.09 + 0.2 * rng(), 0.21 + 0.11 * rng(), 0.25 + 0.11 * rng(), 0.51 + 0.33 * rng()],
-    [0.03 - 0.23 * rng(), 0.48, 0.25 + 0.12 * rng(), 0.26 + 0.12 * rng(), 0.39 + 0.26 * rng()],
-  ]
-  const map = (u, v) => [cx + co * rx * u + si * rz * v, cz - si * rx * u + co * rz * v]
-  const blocky = [1, 4, 5, 7, 11, 14, 17, 20, 23].includes(index)
-  const long = [0, 3, 8, 9, 13, 16, 18, 19, 24].includes(index)
-  const skew = 0.26 * Math.sin(index * 2.29),
-    notchDir = 0.45 + index * 0.74
-  function height(u, v) {
-    let tallest = 0,
-      sum = 0
-    const fold = noise(1.6 * u + index, 2.1 * v, 71) - 0.5
-    for (let i = 0; i < peaks.length; i++) {
-      const [px, pz, w, d, hei] = peaks[i]
-      const sx = u - px + (0.18 + 0.06 * i) * fold + skew * (v - pz)
-      const sz = v - pz + 0.19 * fold + 0.041 * Math.sin((u + index) * 12)
-      const x = sx / (w * (long ? 1.43 : blocky ? 0.83 : 1.03)),
-        z = sz / (d * (long ? 0.77 : blocky ? 0.82 : 1.01))
-      const dist = Math.pow(
-        Math.pow(Math.abs(x), blocky ? 3.55 : 2.32) + Math.pow(Math.abs(z), blocky ? 3.55 : 2.32),
-        1 / (blocky ? 3.55 : 2.32)
-      )
-      const cap = blocky ? 1 - smooth(0.41, 1.53, dist) : Math.exp(-Math.pow(dist, long ? 1.51 : 1.73) * 1.1)
-      const value = hei * cap
-      tallest = Math.max(tallest, value)
-      sum += value
-    }
-    const radial = Math.hypot(u, v),
-      f = limit(1 - radial)
-    const divide = Math.abs(
-      u * Math.cos(notchDir) +
-        v * Math.sin(notchDir) +
-        0.105 * Math.sin(v * 8.2 + index) +
-        0.08 * Math.sin(u * 9.1 + 0.3)
-    )
-    const cut = 0.135 * Math.exp(-divide / 0.082) * smooth(0.18, 0.77, tallest)
-    const rille =
-      0.116 * (noise(u * 7.3 + 0.93 * fold + index, v * 4.9, 61) - 0.5) +
-      0.143 * (noise(u * 3.1, v * 4.4 + index, 51) - 0.5)
-    let raw = 0.09 + 0.78 * tallest + 0.15 * sum + 0.22 * f - cut + rille
-    if (!near) {
-      const line = v - (0.27 * Math.sin(u * 3.37 + index) + u * skew + 0.16 * Math.sin(u * 6 + index * 0.49))
-      const escarpment = 1 - smooth(0.08 + 0.11 * noise(u * 3.4, index, 28), 0.66, Math.abs(line))
-      const crest =
-        0.47 +
-        0.22 * Math.cos(u * 5.3 + index * 0.88) +
-        0.2 * Math.abs(Math.sin(u * 7.9 + index * 0.5)) +
-        0.18 * noise(u * 6.2, index, 17)
-      const spur = 0.08 + 0.82 * escarpment * crest * (1 - smooth(0.59, 1.02, Math.abs(u))) + 0.14 * f + rille
-      raw = mix(raw, spur, index % 4 === 0 ? 0.63 : 0.81)
-    }
-    const q = raw * (blocky ? 6.22 : 4.69) + 0.68 * noise(u * 4, v * 4, 53)
-    const frac = q - Math.floor(q)
-    const shelves = (smooth(0.29, 0.72, frac) - frac) * (blocky ? 0.18 : 0.085) * smooth(0.08, 0.36, raw)
-    return -16 + h * (raw + shelves)
-  }
-  const rr = (t) => 1 + 0.056 * Math.sin(5 * t + index) + 0.043 * Math.cos(9 * t - index * 0.57)
-  function surface(i, j) {
-    const sx = (i / n) * 2 - 1,
-      sz = (j / n) * 2 - 1
-    let u = sx * Math.sqrt(1 - sz * sz * 0.5),
-      v = sz * Math.sqrt(1 - sx * sx * 0.5)
-    const scale = rr(Math.atan2(v, u))
-    u *= scale
-    v *= scale
-    const [x, z] = map(u, v),
-      y = height(u, v)
-    const du = (height(u + 0.013, v) - height(u - 0.013, v)) / (0.026 * rx),
-      dv = (height(u, v + 0.013) - height(u, v - 0.013)) / (0.026 * rz)
-    const norm = unit([-du * co - dv * si, 1, du * si - dv * co])
-    const canopy = rgb(near ? 0x476e5b : 0x748b83),
-      cliff = rgb(near ? 0x7c8983 : 0x939e9a)
-    const shadow = rgb(near ? 0x4c606a : 0x758794),
-      quartz = rgb(near ? 0xa4a58b : 0xa8afa3)
-    const groove = noise(u * 13.9 + index + 0.21 * foldAt(u, v), v * 8.32, 29)
-    const bedding =
-      (y * 0.109 + 0.68 * Math.sin(0.062 * x + 0.03 * z) + 0.29 * noise(u * 5.7, v * 4.7, 15)) % 1
-    const mineral = 1 - smooth(0.032, 0.195, Math.abs(Math.abs(bedding) - 0.48))
-    let c = blend(shadow, cliff, smooth(0.17, 0.83, groove))
-    c = blend(c, quartz, 0.46 * mineral * (1 - smooth(0.4, 0.76, norm[1])))
-    c = blend(c, canopy, smooth(0.28, 0.77, norm[1] + 0.4 * (noise(u * 4.4, v * 3.7, 10) - 0.5)) * 0.92)
-    const timber = forestZones.reduce(
-      (cover, [px, pz, r]) => Math.max(cover, 1 - smooth(r * 0.6, r * 1.38, Math.hypot(u - px, v - pz))),
-      0
-    )
-    c = blend(c, near ? pine[1] : canopy, timber * (0.32 + 0.44 * smooth(0.3, 0.7, norm[1])))
-    return { p: [x, y, z], norm, c: tint(c, 0.88 + 0.21 * noise(u * 9 + 0.15, v * 8.6, 26)), u, v }
-  }
-  const foldAt = (u, v) => noise(u * 3.2, v * 3.8 + index, 41) - 0.5
-  const grid = Array.from({ length: n + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => surface(i, j)))
-  // Interpolate the very triangles used to draw the slope. A rock spur may
-  // span a twenty-metre change in height between its two feet.
-  function rootSeat(x, z) {
-    for (let i = 0; i < n; i++)
-      for (let j = 0; j < n; j++) {
-        const cells = [grid[i][j].p, grid[i][j + 1].p, grid[i + 1][j + 1].p, grid[i + 1][j].p]
-        const p = cells[0]
-        for (const [q, r] of [
-          [cells[1], cells[2]],
-          [cells[2], cells[3]],
-        ]) {
-          if (
-            x < Math.min(p[0], q[0], r[0]) ||
-            x > Math.max(p[0], q[0], r[0]) ||
-            z < Math.min(p[2], q[2], r[2]) ||
-            z > Math.max(p[2], q[2], r[2])
-          )
-            continue
-          const d = (q[2] - r[2]) * (p[0] - r[0]) + (r[0] - q[0]) * (p[2] - r[2])
-          const s = ((q[2] - r[2]) * (x - r[0]) + (r[0] - q[0]) * (z - r[2])) / d
-          const t = ((r[2] - p[2]) * (x - r[0]) + (p[0] - r[0]) * (z - r[2])) / d
-          if (s >= -0.000001 && t >= -0.000001 && s + t <= 1.000001)
-            return s * p[1] + t * q[1] + (1 - s - t) * r[1]
-        }
-      }
-    return -16
-  }
-  for (let i = 0; i <= n; i++)
-    for (let j = 0; j <= n; j++) {
-      const dx = sub(grid[Math.min(i + 1, n)][j].p, grid[Math.max(i - 1, 0)][j].p)
-      const dz = sub(grid[i][Math.min(j + 1, n)].p, grid[i][Math.max(j - 1, 0)].p)
-      grid[i][j].norm = unit(blend(grid[i][j].norm, unit(cross(dz, dx)), 0.57))
-    }
-  for (let i = 0; i < n; i++)
-    for (let j = 0; j < n; j++) {
-      const vs = [grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]]
-      const facet = unit(cross(sub(vs[1].p, vs[0].p), sub(vs[3].p, vs[0].p)))
-      const normals = vs.map((e) => unit(blend(e.norm, facet, blocky ? 0.25 : 0.13)))
-      panel(
-        b,
-        m.mountainGranite,
-        vs.map((e) => e.p),
-        vs.map((e) => e.c),
-        null,
-        normals
-      )
-    }
-  const ring = []
-  for (let i = 0; i < n; i++) ring.push(grid[i][0])
-  for (let j = 0; j < n; j++) ring.push(grid[n][j])
-  for (let i = n; i > 0; i--) ring.push(grid[i][n])
-  for (let j = n; j > 0; j--) ring.push(grid[0][j])
-  const profiles = [
-    [0, 1],
-    [0.17, 0.994],
-    [0.34, 0.945],
-    [0.57, 0.8],
-    [0.77, 0.59],
-    [0.91, 0.35],
-    [1, 0.11],
-  ]
-  const rings = (near ? profiles : profiles.filter((_, i) => i !== 1 && i !== 4)).map(([f, r]) =>
-    ring.map(({ p: [x, y, z], u, v }) => {
-      const th = Math.atan2(v, u),
-        root =
-          (0.24 * Math.sin(3 * th + index) + 0.16 * Math.sin(7 * th - 0.19 * index)) * Math.sin(Math.PI * f)
-      return [
-        cx + (x - cx) * (r + root * 0.12) + rx * 0.09 * f * f,
-        mix(y, -36 - 0.6 * h, f) - h * (root * 0.52 + 0.15 * f * (1 - f)),
-        cz + (z - cz) * (r + root * 0.14) - rz * 0.08 * f * f,
-      ]
-    })
-  )
-  const deep = rgb(near ? 0x526a74 : 0x7a8d98)
-  for (let r = 0; r < rings.length - 1; r++)
-    for (let j = 0; j < ring.length; j++) {
-      const k = (j + 1) % ring.length,
-        ps = [rings[r][j], rings[r][k], rings[r + 1][k], rings[r + 1][j]]
-      const c = blend(deep, ring[j].c, 0.34 + 0.16 * Math.sin(r * 1.72 + index + j * 0.17))
-      b.face(m.mountainGranite, ps, c)
-    }
-  const bottom = [cx + rx * 0.09, -38 - 0.61 * h, cz - rz * 0.08]
-  for (let j = 0; j < ring.length; j++)
-    b.face(m.mountainGranite, [rings.at(-1)[j], rings.at(-1)[(j + 1) % ring.length], bottom], deep)
-  if (near)
-    for (const [u, v, r] of forestZones) {
-      const candidates = []
-      for (const row of grid)
-        for (const q of row)
-          if (q.norm[1] > 0.46 && q.p[1] > -0.8 && Math.hypot(q.u - u, q.v - v) < r) candidates.push(q)
-      const count = Math.min(candidates.length, 4 + Math.floor(rng() * 4))
-      for (let i = 0; i < count; i++) {
-        const k = Math.floor(rng() * candidates.length),
-          station = candidates.splice(k, 1)[0]
-        const [x, y, z] = station.p
-        distantPine(b, m, rng, x, y, z, 3.2 + rng() * 3.9, index + 0.49 * i)
-      }
-    }
-  if (near && [1, 2, 4, 5, 6, 7, 10].includes(index)) {
-    const nearCity = Math.sign(-cx) * (0.36 + 0.13 * rng())
-    const configs = {
-      1: [2, 0.54, 0.4, 0.5],
-      2: [2, 0.29, 0.22, 0.39],
-      4: [3, 0.44, 0.29, 0.59],
-      5: [3, 0.34, 0.31, 0.51],
-      6: [2, 0.46, 0.29, 0.46],
-      7: [2, 0.54, 0.28, 0.39],
-      10: [2, 0.52, 0.32, 0.31],
-    }
-    const [count, span, depth, maxRise] = configs[index]
-    for (let j = 0; j < count; j++) {
-      const u = nearCity + j * 0.09,
-        v = -0.31 + j * 0.17
-      const [x, z] = map(u, v),
-        g = height(u, v),
-        rise = h * maxRise * (j === 1 ? 1.18 : 0.73 + 0.27 * rng())
-      const crown = towerCrag(
-        b,
-        m,
-        rng,
-        x,
-        g - h * 0.2,
-        z,
-        rx * (span + 0.11 * rng()),
-        rz * (depth + 0.1 * rng()),
-        rise,
-        a + (index % 2 ? 0.27 : -0.36) * j,
-        (rng() - 0.5) * 0.49,
-        j === 2 && index === 5,
-        rootSeat
-      )
-      if (j === 1 && (index === 4 || index === 6))
-        leaningPine(b, m, rng, ...crown, index === 4 ? 1.85 : 1.47, a + Math.PI)
-      else if (j !== 2 && rng() < 0.62) distantPine(b, m, rng, ...crown, 3.6 + 2 * rng(), a)
-    }
-  }
-  if (index === 3 || index === 7) {
-    const v = index === 3 ? 0.37 : -0.11,
-      u = index === 3 ? -0.64 : -0.73,
-      p = map(u, v)
-    const crown = naturalArch(
-      b,
-      m,
-      rng,
-      [p[0], height(u, v) - 2.1, p[1]],
-      index === 3 ? 20 : 16.5,
-      index === 3 ? 12 : 11,
-      0.26 + index * 0.19,
-      rootSeat
-    )
-    if (index === 3) leaningPine(b, m, rng, ...crown, 1.2, -0.48)
-  }
-}
+const distantHeather = [0x657d79, 0x76877f, 0x586f6e, 0x64767c].map(rgb)
+
 export function distantRanges(scene, m) {
-  for (let i = 0; i < ranges.length; i += 3) {
-    const batch = new LandBatch(scene)
-    for (let j = i; j < Math.min(i + 3, ranges.length); j++) massif(batch, m, ranges[j], j)
-    batch.finish()
-  }
+  ranges.forEach(([x, z, run, depth, relief, yaw], id) => {
+    const b = new LandBatch(scene),
+      co = Math.cos(yaw),
+      si = Math.sin(yaw)
+    const point = (u, y, v) => [x + co * u + si * v, y, z - si * u + co * v]
+    const n = 21,
+      rows = 7
+    const grid = Array.from({ length: n + 1 }, (_, i) => {
+      const u = (i / n) * 2 - 1,
+        arc = 0.075 + 0.925 * (1 - u * u) ** 0.69
+      const bend = depth * (0.29 * Math.sin(4.3 * u + id) + 0.18 * Math.sin(7.4 * u - id * 1.3))
+      const top = (0.43 + 0.44 * noise(4.2 * u + id, 0.6, 31) + 0.22 * Math.cos(3.8 * u - id)) * arc
+      return Array.from({ length: rows }, (_, j) => {
+        const v = (j / (rows - 1)) * 2 - 1,
+          fleck = noise(7 * u + id, 3 * v, 36)
+        const shift = 0.13 * Math.sin(u * 8.4 + id),
+          ridge = Math.exp(-2.7 * Math.abs(v - shift) ** 1.65)
+        const py = -5.7 + relief * top * ridge + arc * (fleck - 0.5) * 2.4
+        return {
+          p: point(u * run, py, bend + v * arc * depth * (0.83 + 0.27 * fleck)),
+          c: blend(distantHeather[(j + id) % 4], distantHeather[0], 0.37 + 0.38 * fleck),
+        }
+      })
+    })
+    for (let i = 0; i <= n; i++)
+      for (let j = 0; j < rows; j++) {
+        const a = sub(grid[Math.min(i + 1, n)][j].p, grid[Math.max(i - 1, 0)][j].p)
+        const c = sub(grid[i][Math.min(j + 1, rows - 1)].p, grid[i][Math.max(j - 1, 0)].p)
+        grid[i][j].n = unit(cross(c, a))
+      }
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < rows - 1; j++) {
+        const v = [grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]]
+        panel(
+          b,
+          m.mountainGranite,
+          v.map((q) => q.p),
+          v.map((q) => q.c),
+          null,
+          v.map((q) => q.n)
+        )
+      }
+    const rim = [
+      ...grid.map((col) => col[0]),
+      ...grid[n].slice(1),
+      ...grid
+        .slice(0, -1)
+        .reverse()
+        .map((col) => col.at(-1)),
+      ...grid[0].slice(1, -1).reverse(),
+    ]
+    let previous = rim.map((q) => q.p)
+    for (const [f, y] of [
+      [0.93, -16],
+      [0.67, -27],
+      [0.19, -33],
+    ]) {
+      const next = rim.map(({ p }, i) => [
+        mix(x, p[0], f),
+        y - 2.4 * Math.sin(i * 0.51 + id),
+        mix(z, p[2], f),
+      ])
+      for (let i = 0; i < rim.length; i++) {
+        const j = (i + 1) % rim.length
+        b.face(
+          m.mountainGranite,
+          [previous[i], previous[j], next[j], next[i]],
+          blend(rim[i].c, distantHeather[3], 0.61)
+        )
+      }
+      previous = next
+    }
+    for (let i = 0; i < rim.length; i++)
+      b.face(
+        m.mountainGranite,
+        [previous[i], previous[(i + 1) % rim.length], [x, -36, z]],
+        distantHeather[3]
+      )
+    b.finish()
+  })
 }

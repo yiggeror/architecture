@@ -1,8 +1,13 @@
 import * as T from 'three'
-import { stations } from './stations.js'
+import { stations, framePanorama } from './stations.js'
 
 const clamp = T.MathUtils.clamp
 const pitchLimit = Math.PI / 2 - 0.005
+const lowSpeed = 10
+
+function altitudeBonus(y) {
+  return clamp((y - 6) * 0.49, 0, 98)
+}
 const controls = new Set([
   'KeyW',
   'KeyA',
@@ -60,6 +65,7 @@ export function navigation(canvas, camera, world) {
     yaw += horizontal
     pitch = nextPitch
     orient()
+    world.prefetch?.(camera.position, camera.getWorldDirection(direction))
     select(-1)
   }
 
@@ -77,26 +83,31 @@ export function navigation(canvas, camera, world) {
     world.move(camera.position, direction.x, direction.y, direction.z, 0)
     if (!previous.equals(camera.position)) {
       camera.updateMatrixWorld()
+      world.prefetch?.(camera.position, direction)
       select(-1)
     }
   }
 
-  function speed() {
-    // At the height of the clouds, crossing the panorama covers more ground.
-    return 4.65 + clamp((camera.position.y - 5) * 0.29, 0, 17)
-  }
-
   function step(now) {
-    const dt = clamp((now - lastTime) / 1000, 0, 0.4)
+    // A long foreground render still counts as held input. A hidden or
+    // suspended document clears its inputs before the next visible frame.
+    const dt = Math.max(0, (now - lastTime) / 1000)
     lastTime = Math.max(lastTime, now)
     if (!dt || (!held.size && !axis.lengthSq())) return
     const key = (code) => Number(held.has(code))
     turn((key('ArrowRight') - key('ArrowLeft')) * 1.7 * dt, (key('ArrowUp') - key('ArrowDown')) * 1.45 * dt)
-    const side = axis.x + key('KeyD') - key('KeyA')
-    const forward = axis.y + key('KeyW') - key('KeyS')
+    const bonus = altitudeBonus(camera.position.y)
+    const cruise = lowSpeed + bonus
+    const radius = axis.length()
+    // The long-distance speed enters late in the thumb's travel. Half a throw
+    // still lets someone follow a parapet or approach an upper-storey window.
+    const throttle = radius ** 1.75
+    const stickGain = radius ? (lowSpeed * throttle + bonus * throttle ** 3) / (cruise * radius) : 0
+    const side = axis.x * stickGain + key('KeyD') - key('KeyA')
+    const forward = axis.y * stickGain + key('KeyW') - key('KeyS')
     const vertical = key('KeyE') - key('KeyQ')
     const fast = held.has('ShiftLeft') || held.has('ShiftRight')
-    translate(side, vertical, forward, dt * speed() * (fast ? 2.1 : 1), true)
+    translate(side, vertical, forward, dt * cruise * (fast ? 2 : 1), true)
   }
 
   function resetStick() {
@@ -119,25 +130,16 @@ export function navigation(canvas, camera, world) {
   function placeStation(station) {
     const narrow = camera.aspect < 0.81
     const eye = (narrow && station.portraitEye) || station.eye,
-      target = (narrow && station.portraitTarget) || station.target,
-      panoramaWidth = station.panoramaWidth
+      target = (narrow && station.portraitTarget) || station.target
     camera.position.fromArray(eye)
-    if (panoramaWidth && camera.aspect > 0) {
-      // Keep both shores in frame on narrow screens. Move the actual eye along
-      // the sightline so the next flight begins at the point shown on screen.
-      const halfFov = T.MathUtils.degToRad(camera.getEffectiveFOV()) / 2
-      const distance = panoramaWidth / (2 * camera.aspect * Math.tan(halfFov))
-      previous.fromArray(target)
-      direction.subVectors(camera.position, previous)
-      if (direction.lengthSq() < distance * distance)
-        camera.position.copy(previous).add(direction.setLength(distance))
-    }
+    if (station.panorama) framePanorama(camera, station)
     const dx = target[0] - eye[0],
       dy = target[1] - eye[1],
       dz = target[2] - eye[2]
     yaw = Math.atan2(dx, -dz)
     pitch = clamp(Math.atan2(dy, Math.hypot(dx, dz)), -pitchLimit, pitchLimit)
     orient()
+    world.prefetch?.(camera.position, camera.getWorldDirection(direction))
   }
 
   function jump(i) {
@@ -150,8 +152,8 @@ export function navigation(canvas, camera, world) {
     requestAnimationFrame(() => {
       // The renderer updates the perspective lens during the resize event.
       const station = stations[selected]
-      if (station?.panoramaWidth || station?.portraitEye) placeStation(station)
-    })
+      if (station?.panorama || station?.portraitEye) placeStation(station)
+    }),
   )
 
   addEventListener('keydown', (e) => {
@@ -170,6 +172,7 @@ export function navigation(canvas, camera, world) {
   })
   addEventListener('blur', stopInputs)
   addEventListener('pagehide', stopInputs)
+  document.addEventListener('freeze', stopInputs)
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stopInputs()
   })
@@ -223,9 +226,9 @@ export function navigation(canvas, camera, world) {
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1
       const side = clamp(e.deltaX * unit * 0.005, -2, 2)
       const forward = clamp(-e.deltaY * unit * 0.009, -2, 2)
-      translate(side, 0, forward, speed() / 2.85)
+      translate(side, 0, forward, (lowSpeed + altitudeBonus(camera.position.y)) / 4.2)
     },
-    { passive: false }
+    { passive: false },
   )
 
   function readStick(e) {
@@ -233,7 +236,7 @@ export function navigation(canvas, camera, world) {
     const travel = rect.width * 0.31
     axis.set(
       (e.clientX - rect.left - rect.width / 2) / travel,
-      (rect.top + rect.height / 2 - e.clientY) / travel
+      (rect.top + rect.height / 2 - e.clientY) / travel,
     )
     // A small axial dead zone lets a thumb fly straight without pixel precision.
     if (Math.abs(axis.x) < 0.1) axis.x = 0
@@ -267,7 +270,7 @@ export function navigation(canvas, camera, world) {
     step,
     resize() {
       const s = stations[selected]
-      if (s?.panoramaWidth || s?.portraitEye) placeStation(s)
+      if (s?.panorama || s?.portraitEye) placeStation(s)
     },
   }
 }

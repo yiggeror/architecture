@@ -3,9 +3,19 @@ import { layeredView } from './layers.js'
 
 const vertex = `
 uniform mat4 textureMatrix;
+#ifdef ESTUARY
+attribute float shore; varying float edge;
+#endif
 varying vec4 reflection;varying vec3 wp;
-void main(){wp=(modelMatrix*vec4(position,1.)).xyz;reflection=textureMatrix*vec4(position,1.);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`
+void main(){
+#ifdef ESTUARY
+edge=shore;
+#endif
+wp=(modelMatrix*vec4(position,1.)).xyz;reflection=textureMatrix*vec4(position,1.);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`
 const fragment = `
+#ifdef ESTUARY
+varying float edge;
+#endif
 uniform sampler2D tDiffuse;uniform float time,day,calm;
 uniform vec4 movePlace[10],moveHue[10];
 varying vec4 reflection;varying vec3 wp;
@@ -33,12 +43,12 @@ void main(){
     texture2D(tDiffuse,clamp(k+vec2(.0015,.001),.001,.999)).rgb*.23+
     texture2D(tDiffuse,clamp(k-vec2(.0015,.001),.001,.999)).rgb*.23;
  float fres=.32+.65*pow(1.-max(dot(n,v),0.),2.4);
- vec3 water=mix(vec3(.015,.060,.077),vec3(.063,.27,.235),day)*mix(1.,.77,calm);
+ vec3 water=mix(vec3(.007,.024,.041),vec3(.063,.27,.235),day)*mix(1.,.77,calm);
  water*=.92+.11*a+.07*b;
  vec3 col=mix(water,mirror,clamp(fres+.081,0.,.97));
- vec3 moon=normalize(mix(vec3(-.23,.42,-.88),vec3(-.65,.57,.49),day));
+ vec3 moon=normalize(mix(vec3(-.87,.74,-.10),vec3(-.65,.57,.49),day));
  float shimmer=pow(max(0.,dot(n,normalize(moon+v))),mix(142.,107.,day));
- col+=mix(vec3(.65,.88,1.24),vec3(2.75,2.29,1.55),day)*shimmer*(.32+.36*pow(sin(p.x*1.77+cos(p.y*.91))*.5+.5,2.));
+ col+=mix(vec3(.25,.39,.66),vec3(2.75,2.29,1.55),day)*shimmer*(.32+.36*pow(sin(p.x*1.77+cos(p.y*.91))*.5+.5,2.));
  for(int i=0;i<10;i++){
    vec3 off=movePlace[i].xyz-wp;float d2=dot(off,off);
    float fall=max(0.,1.-d2*movePlace[i].w*.36);
@@ -46,16 +56,24 @@ void main(){
    col+=moveHue[i].rgb*fall*fall*(.045+2.8*glint)/(2.+d2)*(1.-.96*day);
  }
  col+=vec3(.055,.080,.09)*length(imp)*max(fres,.5);
- gl_FragColor=vec4(col,1.);
+ float opacity=1.;
+ #ifdef ESTUARY
+ opacity=smoothstep(.02,.98,edge);
+ if(opacity<.009)discard;
+ col=mix(col,day>.5?vec3(.38,.53,.53):vec3(.005,.012,.024),smoothstep(75.,740.,distance)*.68);
+ #endif
+ gl_FragColor=vec4(col,opacity);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
 }`
 export function river(scene, statics, renderer, common, software, config = {}) {
   const small = Boolean(config.small),
+    wide = Boolean(config.wide),
+    primary = !small && !wide,
     point = config.point || [0, 0, 11],
     level = point[1]
-  const width = small ? (software ? 252 : 420) : software ? 400 : 784,
-    height = small ? (software ? 183 : 300) : software ? 265 : 510
+  const width = wide ? (software ? 340 : 660) : small ? (software ? 252 : 420) : software ? 400 : 784,
+    height = wide ? (software ? 214 : 438) : small ? (software ? 183 : 300) : software ? 265 : 510
   const target = new T.WebGLRenderTarget(width, height, {
     type: T.HalfFloatType,
     minFilter: T.LinearFilter,
@@ -68,6 +86,8 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     plate = layeredView(renderer, scene, statics)
   const material = new T.ShaderMaterial({
     name: '潮汐',
+    defines: wide ? { ESTUARY: 1 } : {},
+    transparent: wide,
     vertexShader: vertex,
     fragmentShader: fragment,
     uniforms: {
@@ -81,12 +101,16 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     },
   })
   const water = new T.Mesh(config.geometry || new T.PlaneGeometry(34, 154), material)
-  water.name = small ? '雨庭水池' : '天河水面'
+  water.name = wide ? '群城下游' : small ? '雨庭水池' : '天河水面'
   water.rotation.x = -Math.PI / 2
   water.position.set(...point)
   water.updateMatrixWorld()
+  water.userData.waterSurface = true
   scene.add(water)
-  if (!small) common.waterMatrix.value = matrix
+  if (primary) common.waterMatrix.value = matrix
+  const frustum = new T.Frustum(),
+    projection = new T.Matrix4()
+  const boxes = config.patches || [new T.Box3().setFromObject(water)]
   const lastEye = new T.Vector3(1e8, 0, 0),
     lastQ = new T.Quaternion(),
     look = new T.Vector3(),
@@ -105,11 +129,23 @@ export function river(scene, statics, renderer, common, software, config = {}) {
       (small && cam.position.distanceToSquared(water.position) > 46 * 46)
     )
       return
+    frustum.setFromProjectionMatrix(projection.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse))
+    if (!boxes.some((box) => frustum.intersectsBox(box))) return
+    // A high inner quay hides the lower estuary on both sides of the old canal.
+    if (wide) {
+      water.visible = !(
+        Math.abs(cam.position.x) < 57 &&
+        cam.position.z > -78 &&
+        cam.position.z < 78 &&
+        cam.position.y < 24
+      )
+      if (!water.visible) return
+    }
     const moved =
       lastEye.distanceToSquared(cam.position) > 0.00004 ||
       lastQ.angleTo(cam.quaternion) > 0.0006 ||
       cam.aspect !== lastAspect
-    if (!force && !moved && now - stamp < (software ? 135 : 55)) return
+    if (!force && !moved && now - stamp < (wide ? 700 : software ? 135 : 55)) return
     stamp = now
     lastEye.copy(cam.position)
     lastQ.copy(cam.quaternion)
@@ -148,13 +184,14 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     const previous = renderer.getRenderTarget()
     const original = common.mirrorMap.value,
       wasValid = common.waterValid.value
-    water.visible = false
+    const wet = scene.children.filter((o) => o.userData.waterSurface && o.visible)
+    for (const o of wet) o.visible = false
     common.waterValid.value = 0
     common.mirrorMap.value = dummy
     plate.render(target, camera, now, software ? 6200 : 750)
-    water.visible = true
-    common.mirrorMap.value = small ? original : target.texture
-    common.waterValid.value = small ? wasValid : 1
+    for (const o of wet) o.visible = true
+    common.mirrorMap.value = primary ? target.texture : original
+    common.waterValid.value = primary ? 1 : wasValid
     renderer.setRenderTarget(previous)
     force = false
   }

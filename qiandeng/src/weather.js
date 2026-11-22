@@ -1,5 +1,6 @@
 import * as T from 'three'
 import { generator } from './mesh.js'
+import { lanternField } from './cityLightField.js'
 
 const windX = 0.128,
   windZ = -0.058
@@ -8,6 +9,8 @@ const xMin = -105,
   cell = 0.42
 const columns = 500,
   rows = 660
+const innerRain = { xMin, zMin, cell, columns, rows }
+const valleyRain = { xMin: -220, zMin: -805, cell: 1.19, columns: 571, rows: 860 }
 const baseAt = (x, z) => (Math.abs(x) <= 17 && z >= -66 && z <= 88 ? 0.007 : -58)
 const soft =
   /leaf|leaves|tree|needl|petal|blossom|bough|pineCrown|cliffQuart|ribbon|silk|flag|rope|gold|lantern|paper|bark/i
@@ -15,7 +18,8 @@ const usableRoof = /roof|glazedTile|palaceTile|canopyTile/i
 
 // Distances are projected along the rain vector. Drops therefore meet the real
 // sloping roof at its height from this wind direction, even on the upper palace.
-function wetSurfaces(scene) {
+function wetSurfaces(scene, waterMeshes, field, broad) {
+  const { xMin, zMin, cell, columns, rows } = field
   const size = columns * rows,
     top = new Float32Array(size),
     roof = new Float32Array(size).fill(-58)
@@ -23,19 +27,42 @@ function wetSurfaces(scene) {
     for (let i = 0; i < columns; i++)
       top[j * columns + i] = baseAt(xMin + (i + 0.5) * cell, zMin + (j + 0.5) * cell)
   scene.updateMatrixWorld(true)
-  scene.traverse((mesh) => {
+  const bounds = new T.Box3()
+  const candidates = [...waterMeshes]
+  function visit(node) {
+    if (node.userData.noWeather || node.userData.noCollision) return
+    if (node.isMesh) candidates.push(node)
+    for (const c of node.children) visit(c)
+  }
+  visit(scene)
+  for (const mesh of candidates) {
     const material = mesh.material
     if (
       !mesh.isMesh ||
       mesh.isInstancedMesh ||
-      !(material?.isMeshStandardMaterial || material?.uniforms?.pigment) ||
+      !(material?.isMeshStandardMaterial || material?.uniforms?.pigment || mesh.userData.waterSurface) ||
       soft.test(material.name) ||
       material.userData?.noCollision
     )
-      return
+      continue
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox()
+    bounds.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld)
+    const lx = bounds.min.x - windX * bounds.max.y,
+      hx = bounds.max.x - windX * bounds.min.y
+    const lz = bounds.min.z - windZ * bounds.min.y,
+      hz = bounds.max.z - windZ * bounds.max.y
+    if (hx < xMin || lx > xMin + cell * columns || hz < zMin || lz > zMin + cell * rows) continue
+    if (
+      broad &&
+      lx > innerRain.xMin + 1 &&
+      hx < innerRain.xMin + innerRain.cell * innerRain.columns - 1 &&
+      lz > innerRain.zMin + 1 &&
+      hz < innerRain.zMin + innerRain.cell * innerRain.rows - 1
+    )
+      continue
     const pos = mesh.geometry.attributes.position,
       index = mesh.geometry.index?.array
-    if (!pos) return
+    if (!pos) continue
     const isRoof = usableRoof.test(material.name),
       matrix = mesh.matrixWorld.elements
     const x = new Float32Array(pos.count),
@@ -79,7 +106,7 @@ function wetSurfaces(scene) {
           if (isRoof && h > roof[at]) roof[at] = h
         }
     }
-  })
+  }
   const tex = new T.DataTexture(top, columns, rows, T.RedFormat, T.FloatType)
   tex.minFilter = tex.magFilter = T.NearestFilter
   tex.needsUpdate = true
@@ -138,9 +165,17 @@ function lampMap(lights) {
 const rainVertex = `
 attribute vec4 seed, path;
 uniform float time, daylight;
-uniform sampler2D heights;
+uniform sampler2D heights,outerHeights;
+${lanternField}
 uniform highp sampler3D warmField;
-uniform vec4 grid;
+uniform vec4 grid,outerGrid;
+float roofLevel(vec2 p){
+ vec2 q=(p-grid.xy)*grid.zw;
+ if(min(q.x,q.y)>=0. && max(q.x,q.y)<1.)return texture2D(heights,q).r;
+ q=(p-outerGrid.xy)*outerGrid.zw;
+ if(min(q.x,q.y)>=0. && max(q.x,q.y)<1.)return texture2D(outerHeights,q).r;
+ return -90.;
+}
 uniform vec4 waterLights[4];
 varying vec2 shape;
 varying float warm,strength,kind;
@@ -156,16 +191,14 @@ void main(){
     vec2 lane=seed.xz+57.*floor((reference-seed.xz)/57.+.5);
     float base=seed.y-time*path.x;
     float y=base+32.*floor((cameraPosition.y+2.-base)/32.+.5);
-    vec2 uv=(lane-grid.xy)*grid.zw;
-    float bed=texture2D(heights,clamp(uv,vec2(0.),vec2(1.))).r+.012;
-    if(any(lessThan(uv,vec2(0.)))||any(greaterThan(uv,vec2(1.))))bed=-90.;
+    float bed=roofLevel(lane)+.012;
     if(y+path.z<bed||daylight>.5){gl_Position=vec4(3.,3.,3.,1.);return;}
     point=vec3(lane.x+wind.x*y,max(y,bed),lane.y+wind.z*y);
     trail=min(path.z,max(.001,y+path.z-bed));
     float cell=.57+.23*sin(point.x*.075+point.z*.052-time*.30)+.16*sin(point.z*.13+time*.18);
     strength=seed.w*(.54+.75*cell)*(1.-smoothstep(20.,28.,length(lane-reference)));
-    strength*=1.-smoothstep(115.,175.,max(abs(point.x),abs(point.z+18.)*.81));
-    strength*=1.-smoothstep(97.,159.,point.y);
+    strength*=(1.-smoothstep(778.,845.,abs(point.z+8.)))*(1.-smoothstep(407.,478.,abs(point.x)));
+    strength*=1.-smoothstep(315.,359.,point.y);
   } else {
     float span=seed.w-seed.y,phase=fract(path.y+time*path.x);
     if(daylight>.5&&fract(path.y*191.7)>.11){gl_Position=vec4(3.,3.,3.,1.);return;}
@@ -179,6 +212,9 @@ void main(){
   float radius=mix(.0035,.0064,kind),drawRadius=max(radius,dist*.00109);
   vec2 heatUV=(point.xz-grid.xy)*grid.zw;
   warm=texture(warmField,vec3(heatUV.x,(point.y-(${heatFloor.toFixed(1)}))/${(heatCeiling - heatFloor).toFixed(1)},heatUV.y)).r;
+  if(min(heatUV.x,heatUV.y)<0. || max(heatUV.x,heatUV.y)>1. || point.y>88.){
+    float g=lampEnergy(point).r;warm=smoothstep(.08,1.45,g);
+  }
   for(int k=0;k<4;k++){
     vec3 delta=point-waterLights[k].xyz;
     float f=max(0.,1.-dot(delta,delta)*waterLights[k].w);
@@ -196,8 +232,8 @@ void main(){
   float width=mix(1.,.32+.68*exp(-12.*head*head),kind);
   float edge=1.-smoothstep(.29*width,width,abs(shape.x));
   float taper=smoothstep(0.,.09,shape.y)*(1.-.68*shape.y);
-  vec3 silk=mix(vec3(.30,.43,.68),vec3(1.,.55,.20),warm);
-  gl_FragColor=vec4(silk,(.32+.62*warm)*strength*edge*taper);
+  vec3 silk=mix(vec3(.19,.29,.50),vec3(1.,.55,.20),warm);
+  gl_FragColor=vec4(silk,(.26+.73*warm)*strength*edge*taper);
   #include <colorspace_fragment>
 }`
 function rainMesh(group, material, seeds, paths, bounds) {
@@ -219,11 +255,12 @@ function rainMesh(group, material, seeds, paths, bounds) {
 // visible shafts before submission so the other five directions cost no GPU
 // vertex work, both inside sheltered rooms and in long, low river views.
 function shelteredByVessel(wx, wy, wz, ships) {
-  if (!ships || wy > 5.8 || wy < -0.85 || Math.abs(wx) > 17.25 || wz < -66 || wz > 88) return false
+  if (!ships || wy > 6 || wy < -17) return false
   for (const ship of ships) {
     const p = ship.group.position,
       r = ship.spec.length * 0.55 + 0.2
-    if (Math.abs(wx - p.x) > r || Math.abs(wz - p.z) > r) continue
+    if (wy > p.y + (ship.top || 5.8) || wy < p.y - 0.85 || Math.abs(wx - p.x) > r || Math.abs(wz - p.z) > r)
+      continue
     const m = ship.inverse.elements
     const x = m[0] * wx + m[4] * wy + m[8] * wz + m[12],
       z = m[2] * wx + m[6] * wy + m[10] * wz + m[14]
@@ -237,7 +274,7 @@ function shelteredByVessel(wx, wy, wz, ships) {
   return false
 }
 
-function visibleRain(mesh, uniforms, ground, ambient, world) {
+function visibleRain(mesh, uniforms, ground, outerGround, ambient, world) {
   const g = mesh.geometry,
     tracks = g.attributes.seed,
     paths = g.attributes.path
@@ -251,7 +288,7 @@ function visibleRain(mesh, uniforms, ground, ambient, world) {
       eye = camera.position
     if (
       ambient &&
-      (uniforms.daylight.value > 0.5 || eye.y > 176 || Math.abs(eye.x) > 205 || Math.abs(eye.z + 18) > 249)
+      (uniforms.daylight.value > 0.5 || eye.y > 378 || Math.abs(eye.x) > 512 || Math.abs(eye.z + 8) > 880)
     ) {
       g.instanceCount = 0
       return
@@ -278,14 +315,20 @@ function visibleRain(mesh, uniforms, ground, ambient, world) {
         y = base + 32 * Math.floor((eye.y + 2 - base) / 32 + 0.5)
         const a = Math.floor((x - xMin) / cell),
           b = Math.floor((z - zMin) / cell)
-        if (
-          a >= 0 &&
-          a < columns &&
-          b >= 0 &&
-          b < rows &&
-          y + motion[at + 2] < ground[a + b * columns] + 0.012
-        )
-          continue
+        if (a >= 0 && a < columns && b >= 0 && b < rows) {
+          if (y + motion[at + 2] < ground[a + b * columns] + 0.012) continue
+        } else {
+          const c = Math.floor((x - valleyRain.xMin) / valleyRain.cell),
+            d = Math.floor((z - valleyRain.zMin) / valleyRain.cell)
+          if (
+            c >= 0 &&
+            c < valleyRain.columns &&
+            d >= 0 &&
+            d < valleyRain.rows &&
+            y + motion[at + 2] < outerGround[c + d * valleyRain.columns] + 0.012
+          )
+            continue
+        }
       } else {
         if (uniforms.daylight.value > 0.5 && (motion[at + 1] * 191.7) % 1 > 0.11) continue
         const phase = (motion[at + 1] + t * motion[at]) % 1
@@ -318,15 +361,26 @@ function visibleRain(mesh, uniforms, ground, ambient, world) {
   }
 }
 
-export function weather(scene, world = {}) {
-  const surfaces = wetSurfaces(scene),
+export function weather(scene, world, statics, waters, common) {
+  const surfaces = wetSurfaces(statics, waters, innerRain, false),
+    valley = wetSurfaces(statics, waters, valleyRain, true),
     rng = generator(617339)
   const moving = Array.from({ length: 4 }, () => new T.Vector4(1e5, 0, 1e5, 1))
   const uniforms = {
+    ...common,
     waterLights: { value: moving },
     time: { value: 0 },
     daylight: { value: 0 },
     heights: { value: surfaces.tex },
+    outerHeights: { value: valley.tex },
+    outerGrid: {
+      value: new T.Vector4(
+        valleyRain.xMin,
+        valleyRain.zMin,
+        1 / (valleyRain.cell * valleyRain.columns),
+        1 / (valleyRain.cell * valleyRain.rows)
+      ),
+    },
     warmField: { value: lampMap(world.lights || []) },
     grid: { value: new T.Vector4(xMin, zMin, 1 / (columns * cell), 1 / (rows * cell)) },
   }
@@ -352,7 +406,7 @@ export function weather(scene, world = {}) {
   }
   const whole = rainMesh(group, material, seeds, paths)
   whole.name = '河城风雨'
-  const cullers = [visibleRain(whole, uniforms, surfaces.top, true, world)]
+  const cullers = [visibleRain(whole, uniforms, surfaces.top, valley.top, true, world)]
   const chunks = new Map(),
     { top, roof } = surfaces
   const directions = [
@@ -395,7 +449,7 @@ export function weather(scene, world = {}) {
     v.box.expandByScalar(0.3)
     const drip = rainMesh(group, material, v.seeds, v.paths, v.box)
     drip.name = '瓦当滴水'
-    cullers.push(visibleRain(drip, uniforms, surfaces.top, false, world))
+    cullers.push(visibleRain(drip, uniforms, surfaces.top, valley.top, false, world))
   }
   const beforeScene = scene.onBeforeRender
   scene.onBeforeRender = function (renderer, root, camera, ...rest) {

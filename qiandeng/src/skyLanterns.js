@@ -398,7 +398,7 @@ const lanternFragment = `
  uniform sampler2D paper;uniform float daylight;
  varying vec2 silkUV;varying float piece,heat,height,family,distanceToEye;varying vec3 normalWorld; varying float litWick;
  void main(){
-   vec3 gold=vec3(1.48,.48,.082), persimmon=vec3(1.40,.112,.036), ivory=vec3(1.45,1.08,.63);
+   vec3 gold=vec3(1.05,.31,.055), persimmon=vec3(.99,.145,.042), ivory=vec3(.98,.66,.34);
    vec3 dye=family<.43?gold:(family<.80?persimmon:ivory);
    float sidelight=.67+.33*dot(normalize(normalWorld),normalize(vec3(-.54,.67,.51)));
    vec3 c;
@@ -407,9 +407,9 @@ const lanternFragment = `
      float glow=exp(-3.70*max(0.,height-.021));
      float fibre=.975+.025*sin(silkUV.x*1910.);
      float panel=fract(silkUV.x*4.);
-     float rolled=.79+.21*sin(panel*3.14159);
-     vec3 core=dye*(.70+.39*(1.-height))+vec3(1.55,.85,.16)*glow;
-     c=core*art*art*fibre*heat*rolled*(.64+.36*sidelight);
+     float rolled=.73+.27*sin(panel*3.14159);
+     vec3 core=dye*(.44+.33*(1.-height))+vec3(1.25,.49,.10)*glow;
+     c=core*art*art*fibre*heat*rolled*(.64+.36*sidelight)+.004*dye*art*sidelight;
      vec3 silk=family<.43?vec3(.80,.31,.103):(family<.80?vec3(.63,.13,.092):vec3(.86,.67,.43));
      c=mix(c,silk*art*sidelight,daylight);
    }else if(piece<1.5)c=mix(vec3(.25,.105,.034),vec3(.21,.129,.071),daylight)*sidelight;
@@ -417,117 +417,67 @@ const lanternFragment = `
    else if(piece<3.5)c=vec3(.15,.080,.039)*sidelight;
    else { if(daylight>.5&&litWick<.5)discard;
      c=mix(piece<4.5?vec3(3.1,1.24,.18):vec3(4.,2.35,.85),vec3(1.15,.46,.10),daylight)*heat; }
-   float aerial=1.-exp(-.0010*max(0.,distanceToEye));
-   c=mix(c,mix(vec3(.17,.18,.29),vec3(.61,.65,.69),daylight),min(.38,aerial));
+   float aerial=1.-exp(-mix(.0031,.0010,daylight)*max(0.,distanceToEye));
+   c=mix(c,mix(vec3(.003,.006,.014),vec3(.61,.65,.69),daylight),min(.77,aerial));
    gl_FragColor=vec4(c,1.);
    #include <tonemapping_fragment>
    #include <colorspace_fragment>
  }`
-const haloVertex = `
- attribute vec4 lantern;varying vec2 st;varying float shine,farFade;uniform float time;
- void main(){
-  vec4 p=modelViewMatrix*instanceMatrix*vec4(0.,.43,0.,1.);
-  float scale=length(instanceMatrix[1].xyz);
-  p.xy+=position.xy*scale*1.28;
-  st=position.xy;shine=lantern.z*(.86+.08*sin(time*7.1+lantern.y));
-  farFade=1.-smoothstep(75.,300.,-p.z);
-  gl_Position=projectionMatrix*p;
- }`
-const haloFragment = `
- varying vec2 st; varying float shine,farFade;
- void main(){
-  float r=dot(st,st);float a=(exp(-4.3*r)-.014)*shine*farFade;
-  if(a<=.008) discard;
-  gl_FragColor=vec4(.95,.366,.087,a*.13);
-  #include <colorspace_fragment>
- }`
-
-// The lower half of each current starts along a launch landing. They diverge
-// past the gate and reconverge much higher in the wind above the palace.
+// Each family takes its silk from one of the four actual river floats. The
+// northern roofs and the long view of the far city are clear above these paths.
 const currents = [
   {
-    n: 25,
+    n: 8,
+    period: 64,
+    spread: 1.35,
     track: [
-      [-16.25, 1.55, 26],
-      [-13, 11.3, 17],
-      [-27, 25, 3],
-      [-45, 45, -31],
-      [-45, 78, -93],
+      [-16.25, 1.08, 26],
+      [-13.4, 8.8, 23],
+      [-12.5, 15.2, 16],
+      [-16.5, 22, 6],
+      [-18.5, 31, -4],
+      [-23, 38, -16],
     ],
-    spread: 2.1,
   },
   {
-    n: 30,
+    n: 7,
+    period: 58,
+    spread: 1.42,
     track: [
-      [16.25, 1.55, 21.8],
+      [16.25, 1.08, 21.8],
       [13.15, 15.65, 22.3],
-      [10.7, 22, 9.4],
-      [16, 34, -21],
-      [32, 47, -54],
-      [48, 64, -82],
-      [43, 77, -113],
-      [5, 94, -148],
+      [14, 21, 14],
+      [18, 27, 5],
+      [19.7, 33, -8],
+      [24.4, 39.5, -21],
     ],
-    spread: 3.3,
   },
   {
-    n: 29,
+    n: 5,
+    period: 61,
+    spread: 1.46,
     track: [
-      [-16.25, 1.55, -26],
-      [-12, 17, -34],
-      [-24, 31, -46],
-      [-21, 50, -81],
-      [11, 83, -151],
+      [-16.25, 1.08, -26],
+      [-12.4, 9.7, -31],
+      [-12.8, 16.1, -38],
+      [-8.3, 25.3, -45],
+      [2.8, 34, -60],
     ],
-    spread: 3.6,
   },
   {
-    n: 25,
+    n: 5,
+    period: 68,
+    spread: 1.36,
     track: [
-      [16.25, 1.55, -49],
-      [13, 14, -56],
-      [26, 37, -56],
-      [44, 63, -89],
-      [53, 86, -152],
+      [16.25, 1.08, -49],
+      [12.9, 9.6, -51],
+      [9.8, 17.3, -51],
+      [14, 26.4, -56],
+      [19.4, 35.5, -60],
     ],
-    spread: 3.1,
-  },
-  {
-    n: 15,
-    track: [
-      [-17.55, 2.4, 59],
-      [-8, 15, 52],
-      [-2, 28, 47],
-      [-21, 48, 31],
-      [-37, 77, -9],
-    ],
-    spread: 2.3,
-  },
-  {
-    n: 17,
-    track: [
-      [17.55, 2.4, 63],
-      [13, 14, 56],
-      [25, 29, 42],
-      [49, 46, 14],
-      [63, 72, -29],
-    ],
-    spread: 2.3,
-  },
-  {
-    n: 19,
-    track: [
-      [-17.65, 2.4, -58],
-      [-21.6, 21, -61],
-      [-31.4, 39.4, -71.8],
-      [-55, 50, -84],
-      [-65, 64, -108],
-      [-72, 86, -147],
-    ],
-    spread: 3.4,
   },
 ]
-export const launchSites = currents.slice(0, 4).map((s) => s.track[0])
+export const launchSites = currents.map((stream) => stream.track[0])
 
 export function skyLanterns(scene) {
   const rng = generator(793642),
@@ -539,16 +489,6 @@ export function skyLanterns(scene) {
     fragmentShader: lanternFragment,
     side: T.DoubleSide,
   })
-  const glow = new T.ShaderMaterial({
-    uniforms: { time },
-    vertexShader: haloVertex,
-    fragmentShader: haloFragment,
-    transparent: true,
-    depthWrite: false,
-    blending: T.AdditiveBlending,
-    side: T.DoubleSide,
-    forceSinglePass: true,
-  })
   const families = [[], []]
   for (let j = 0; j < currents.length; j++) {
     const stream = currents[j]
@@ -557,31 +497,23 @@ export function skyLanterns(scene) {
       false,
       'centripetal'
     )
-    let index = 0,
-      group = 0
-    while (index < stream.n) {
-      const size = Math.min(stream.n - index, 1 + Math.floor(rng() * 3))
-      const leader = (index + 0.55 + rng() * 0.35) / stream.n
-      for (let k = 0; k < size; k++, index++) {
-        const family = (index + j) % 3 === 0 ? 1 : 0
-        const s = 0.78 + 0.62 * rng() + ((index + 2 * j) % 11 === 0 ? 0.26 : 0)
-        families[family].push({
-          curve,
-          phase: (leader + k * 0.011) % 1,
-          period: 99 + j * 7 + (group % 3) * 3.9,
-          scatter: stream.spread,
-          dx: (rng() - 0.5) * 2,
-          dy: (rng() - 0.5) * 2,
-          dz: (rng() - 0.5) * 2,
-          seed: rng() * tau,
-          scale: s,
-          slim: 0.88 + rng() * 0.3,
-          shade: rng(),
-          heat: 0.8 + rng() * 0.35,
-          day: index % 10 === j % 3,
-        })
-      }
-      group++
+    for (let i = 0; i < stream.n; i++) {
+      const family = (i + j) % 3 === 0 ? 1 : 0
+      families[family].push({
+        curve,
+        phase: (i + 0.21 + 0.56 * rng()) / stream.n,
+        period: stream.period,
+        scatter: stream.spread,
+        dx: rng() * 2 - 1,
+        dy: rng() * 2 - 1,
+        dz: rng() * 2 - 1,
+        seed: rng() * tau,
+        scale: 0.76 + 0.39 * rng() + ((i + 2 * j) % 7 === 0 ? 0.14 : 0),
+        slim: 0.9 + 0.18 * rng(),
+        shade: rng(),
+        heat: 0.79 + 0.23 * rng(),
+        day: i === j % 2,
+      })
     }
   }
   for (let i = 0; i < launchSites.length; i++) {
@@ -619,18 +551,7 @@ export function skyLanterns(scene) {
       scene.add(body)
       return { body, pigment }
     })
-    const haloGeometry = new T.PlaneGeometry(2, 2)
-    const attrs = new Float32Array(records.length * 4)
-    records.forEach((record, k) => attrs.set(record.pigment, k * 4))
-    haloGeometry.setAttribute('lantern', new T.InstancedBufferAttribute(attrs, 4))
-    const halo = new T.InstancedMesh(haloGeometry, glow, records.length)
-    halo.name = '天灯焰晕'
-    halo.frustumCulled = false
-    halo.renderOrder = 3
-    halo.userData.animated = true
-    halo.instanceMatrix.setUsage(T.DynamicDrawUsage)
-    scene.add(halo)
-    return { buckets, halo, records }
+    return { buckets, records }
   })
   function partition(camera, viewportHeight) {
     const focal = 0.5 * viewportHeight * camera.projectionMatrix.elements[5]
@@ -672,9 +593,8 @@ export function skyLanterns(scene) {
   function update(t, day) {
     time.value = t
     partitionedBy = null
-    for (const { halo, records } of clusters) {
-      for (let i = 0; i < records.length; i++) {
-        const a = records[i]
+    for (const { records } of clusters) {
+      for (const a of records) {
         a.visible = !day || a.day
         if (!a.visible) continue
         if (a.fixed) {
@@ -683,35 +603,39 @@ export function skyLanterns(scene) {
           pose.scale.set(a.scale, a.scale * a.slim, a.scale)
         } else {
           const u = (a.phase + t / a.period) % 1
-          a.curve.getPointAt(u, p)
-          const opening = smooth(0, 0.13, u),
-            turbulence = 0.27 + a.scatter * (0.57 + 1.35 * u)
-          const x = p.x + opening * (a.dx * turbulence + 0.56 * Math.sin(t * 0.34 + a.seed + u * 8))
-          const z = p.z + opening * (a.dz * turbulence + 0.47 * Math.cos(t * 0.27 + a.seed - u * 7))
+          // The silk first fills on the forked rack. It then lifts from precisely
+          // the same mouth, with a short, slow start while the hot air builds.
+          const warming = smooth(0, 0.046, u)
+          const flight = Math.max(0, (u - 0.039) / 0.961)
+          const travel = flight * (0.66 + 0.34 * smooth(0, 0.16, flight))
+          a.curve.getPointAt(travel, p)
+          const fire = (0.1 + 0.9 * warming) * (1 - smooth(0.82, 0.985, u))
+          a.pigment[2] = a.heat * fire
+          const opening = smooth(0, 0.15, flight),
+            turbulence = 0.19 + a.scatter * (0.48 + 0.88 * flight)
+          const x = p.x + opening * (a.dx * turbulence + 0.36 * Math.sin(t * 0.28 + a.seed + flight * 8))
+          const z = p.z + opening * (a.dz * turbulence + 0.29 * Math.cos(t * 0.24 + a.seed - flight * 7))
           pose.position.set(
             x,
-            p.y + 0.15 * Math.sin(t * 0.82 + a.seed) + opening * a.dy * (0.8 + 2.85 * u),
+            p.y + opening * (0.11 * Math.sin(t * 0.69 + a.seed) + a.dy * (0.47 + 1.69 * flight)),
             z
           )
           pose.rotation.set(
-            0.05 * Math.sin(t * 0.49 + a.seed),
+            opening * 0.047 * Math.sin(t * 0.42 + a.seed),
             a.seed + 0.42 * Math.sin(t * 0.072 + a.seed) + u * 0.84,
-            0.067 * Math.sin(t * 0.39 + a.seed)
+            opening * 0.057 * Math.sin(t * 0.34 + a.seed)
           )
-          const size = a.scale * Math.max(0.001, smooth(0, 0.012, u) * (1 - smooth(0.93, 1, u)))
-          pose.scale.set(size, size * a.slim, size)
+          const size = a.scale * Math.max(0.006, 1 - smooth(0.982, 1, u))
+          const width = size * (0.84 + 0.16 * warming)
+          pose.scale.set(width, size * a.slim * (0.22 + 0.78 * warming), width)
         }
         pose.updateMatrix()
         a.matrix.copy(pose.matrix)
-        if (!day) halo.setMatrixAt(i, a.matrix)
       }
-      if (!day) halo.instanceMatrix.needsUpdate = true
-      halo.visible = !day
     }
   }
   function mode(day) {
     daylight.value = Number(day)
-    for (const { halo } of clusters) halo.visible = !day
   }
   return { mode, update }
 }

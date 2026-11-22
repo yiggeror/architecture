@@ -11,18 +11,18 @@ const result = await build({
   define: { __CITY_REVIEW__: 'false' },
 })
 const shell = await readFile('shell.html', 'utf8')
-const covers = await Promise.all(
-  ['wide', 'tall'].map(async (key) => {
-    const data = await readFile('cover-' + key + '.webp')
-    return 'url("data:image/webp;base64,' + data.toString('base64') + '")'
-  })
-)
-const arrival =
-  '.arrival{background-image:' +
-  covers[0] +
-  '}@media(max-aspect-ratio:4/5){.arrival{background-image:' +
-  covers[1] +
-  '}}'
+async function arrivalCovers(shape) {
+  const [night, day] = await Promise.all([
+    readFile('cover-' + shape + '.webp'),
+    readFile('cover-day-' + shape + '.webp'),
+  ])
+  return (
+    '.arrival{background-image:url("data:image/webp;base64,' + night.toString('base64') + '")}' +
+    '[data-mode="day"] .arrival{background-image:url("data:image/webp;base64,' + day.toString('base64') + '")}'
+  )
+}
+const [wide, tall] = await Promise.all([arrivalCovers('wide'), arrivalCovers('tall')])
+const arrival = wide + '@media(max-aspect-ratio:4/5){' + tall + '}'
 const licenses = await Promise.all(
   ['three', 'three-mesh-bvh'].map(
     async (name) => name + '\n' + (await readFile('node_modules/' + name + '/LICENSE', 'utf8'))

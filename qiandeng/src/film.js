@@ -11,7 +11,7 @@ void main(){
  vec3 sum=vec3(0.);
  for(int j=0;j<4;j++){vec2 off=(vec2(float(j-2*(j/2)),float(j/2))-.5)*pixel*3.;
  vec3 c=safeSample(texture2D(frame,st+off).rgb);float v=max(c.r,max(c.g,c.b));
- sum+=c*(max(0.,v-.74)/(v+.14));}
+ sum+=c*(max(0.,v-.95)/(v+.14));}
  gl_FragColor=vec4(sum*.25,1.);}`
 const blur = `
 varying vec2 st;uniform sampler2D frame;uniform vec2 pixel;
@@ -49,7 +49,7 @@ void main(){
  vec3 lum=vec3(.24,.64,.12);float horizontal=abs(dot(right-left,lum)),vertical=abs(dot(down-top,lum));
  c=mix(c,horizontal>vertical?(top+down)*.5:(left+right)*.5,smoothstep(.045,.45,max(horizontal,vertical))*.42);
  c=safeSample(c)*texture2D(contactMap,st).r;
- c+=texture2D(airGlow,st).rgb+halo*mix(.29,.085,day);c*=mix(1.13,.93,day);
+ c+=texture2D(airGlow,st).rgb+halo*mix(.255,.085,day);c*=mix(1.01,.93,day);
  c*=mix(vec3(1.026,1.,.972),vec3(1.03,1.012,.98),day);
  vec2 radius=(st-.5)*vec2(1.,.82);c*=1.-.19*dot(radius,radius);
  gl_FragColor=vec4(c,1.);

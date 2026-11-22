@@ -22,7 +22,7 @@ export function festivalSky(scene, world) {
 // Four moored platforms. The loading edge and the rolled paper stay inside the
 // quay margin, clear of the lamp boats rounding the northern turning basin.
 export function launchQuays(b, m, world) {
-  for (const [index, site] of launchSites.entries()) {
+  for (const site of launchSites) {
     const [x, , z] = site,
       sign = Math.sign(x)
     b.at(x, 0, z, 0, () => {
@@ -77,6 +77,11 @@ export function launchQuays(b, m, world) {
           8,
           0.93
         )
+      // An unfolded burner rests in this fork until the paper swells and lifts.
+      for (const xx of [-0.19, 0.19]) {
+        for (const zz of [-0.21, 0.21]) b.beam(m.reed, [xx * 0.78, 0.38, zz], [xx, 1.055, zz], 0.03, 0.03)
+        b.beam(m.darkwood, [xx, 1.055, -0.21], [xx, 1.055, 0.21], 0.037, 0.035)
+      }
       // The standing silk envelope sits on an open bamboo stool.
       for (const xx of [-0.225, 0.225])
         for (const zz of [0.82, 1.29]) b.beam(m.timber, [xx, 0.38, zz], [xx * 0.89, 0.75, zz], 0.061, 0.061)

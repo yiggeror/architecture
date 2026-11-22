@@ -1,4 +1,5 @@
 import * as T from 'three'
+import { spatialSections } from './scenicGeometry.js'
 
 export function generator(seed) {
   let state = seed >>> 0
@@ -17,75 +18,6 @@ export const cross = (a, b) => [
 ]
 export const unit = (a) => scaled(a, 1 / (Math.hypot(...a) || 1))
 export const lerp3 = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t)
-
-// Cull a roof or a tree on the opposite shore before sending its vertices to
-// the GPU. Keep vertices local to a cell so collision, shadows and the low-cost
-// moving view use the same, tight spatial bounds.
-function spatialBatches(geometry, reduced) {
-  const ix = geometry.index.array
-  if (ix.length < 24000) return [{ geometry, reduced }]
-  const positions = geometry.attributes.position.array,
-    cells = new Map()
-  function cellAt(a, b, c) {
-    const x = (positions[a * 3] + positions[b * 3] + positions[c * 3]) / 3
-    const z = (positions[a * 3 + 2] + positions[b * 3 + 2] + positions[c * 3 + 2]) / 3
-    return Math.floor((x + 5) / 27) + Math.floor((z + 4) / 27) * 256
-  }
-  function distribute(indices, simple) {
-    for (let j = 0; j < indices.length; j += 3) {
-      const a = indices[j],
-        b = indices[j + 1],
-        c = indices[j + 2],
-        key = cellAt(a, b, c)
-      let cell = cells.get(key)
-      if (!cell) {
-        cell = { remap: new Map(), vertices: [], full: [], low: [] }
-        cells.set(key, cell)
-      }
-      const target = simple ? cell.low : cell.full
-      for (const vertex of [a, b, c]) {
-        let local = cell.remap.get(vertex)
-        if (local === undefined) {
-          local = cell.vertices.length
-          cell.vertices.push(vertex)
-          cell.remap.set(vertex, local)
-        }
-        target.push(local)
-      }
-    }
-  }
-  distribute(ix, false)
-  if (cells.size < 2) return [{ geometry, reduced }]
-  if (reduced) distribute(reduced.index.array, true)
-  const chunks = []
-  for (const cell of cells.values()) {
-    if (!cell.full.length) continue
-    const geo = new T.BufferGeometry()
-    for (const [name, attribute] of Object.entries(geometry.attributes)) {
-      const stride = attribute.itemSize,
-        source = attribute.array,
-        copy = new Float32Array(cell.vertices.length * stride)
-      for (let j = 0; j < cell.vertices.length; j++) {
-        const old = cell.vertices[j] * stride
-        for (let k = 0; k < stride; k++) copy[j * stride + k] = source[old + k]
-      }
-      geo.setAttribute(name, new T.BufferAttribute(copy, stride))
-    }
-    geo.setIndex(cell.full)
-    geo.computeBoundingBox()
-    geo.computeBoundingSphere()
-    let low
-    if (reduced) {
-      low = new T.BufferGeometry()
-      for (const [name, attribute] of Object.entries(geo.attributes)) low.setAttribute(name, attribute)
-      low.setIndex(cell.low)
-      low.boundingBox = geo.boundingBox
-      low.boundingSphere = geo.boundingSphere
-    }
-    chunks.push({ geometry: geo, reduced: low })
-  }
-  return chunks
-}
 
 // Assemble static surfaces by finish, then split large assemblies for spatial culling.
 export class Mason {
@@ -228,10 +160,6 @@ export class Mason {
       this.face(m, hi, tint)
     }
   }
-  markLeaf(material) {
-    const batch = this.group(material)
-    ;(batch.leaves ??= []).push(batch.ix.length)
-  }
   finish() {
     for (const [m, g] of this.groups) {
       const geo = new T.BufferGeometry()
@@ -243,44 +171,8 @@ export class Mason {
       ])
         geo.setAttribute(name, new T.Float32BufferAttribute(arr, stride))
       geo.setIndex(g.ix)
-      geo.computeBoundingSphere()
-      let motionGeometry
-      if (g.leaves || ['bark', 'bamboo', 'roofEdge'].includes(m.name)) {
-        const leafStarts = new Set(g.leaves),
-          triangles = [],
-          ix = g.ix,
-          pos = g.p
-        let leafNumber = 0
-        for (let j = 0; j < ix.length; ) {
-          if (leafStarts.has(j)) {
-            if (leafNumber++ % 4 !== 3)
-              triangles.push(ix[j], ix[j + 1], ix[j + 5], ix[j], ix[j + 5], ix[j + 8])
-            j += 12
-            continue
-          }
-          const a = ix[j] * 3,
-            c = ix[j + 1] * 3,
-            d = ix[j + 2] * 3
-          const x1 = pos[c] - pos[a],
-            y1 = pos[c + 1] - pos[a + 1],
-            z1 = pos[c + 2] - pos[a + 2]
-          const x2 = pos[d] - pos[a],
-            y2 = pos[d + 1] - pos[a + 1],
-            z2 = pos[d + 2] - pos[a + 2]
-          const area = (y1 * z2 - z1 * y2) ** 2 + (z1 * x2 - x1 * z2) ** 2 + (x1 * y2 - y1 * x2) ** 2
-          if (g.leaves || area > (m.name === 'roofEdge' ? 0.000003 : 0.00000065))
-            triangles.push(ix[j], ix[j + 1], ix[j + 2])
-          j += 3
-        }
-        const reduced = new T.BufferGeometry()
-        for (const [name, attribute] of Object.entries(geo.attributes)) reduced.setAttribute(name, attribute)
-        reduced.setIndex(triangles)
-        reduced.boundingSphere = geo.boundingSphere
-        motionGeometry = reduced
-      }
-      for (const batch of spatialBatches(geo, motionGeometry)) {
-        const mesh = new T.Mesh(batch.geometry, m)
-        if (batch.reduced) mesh.userData.motionGeometry = batch.reduced
+      for (const section of spatialSections(geo, 48)) {
+        const mesh = new T.Mesh(section, m)
         mesh.castShadow = m.userData.cast !== false
         mesh.receiveShadow = true
         if (m.userData.collisionOnly) mesh.visible = false

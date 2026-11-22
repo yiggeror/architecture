@@ -18,7 +18,6 @@ from pathlib import Path
 from shutil import which
 from tempfile import TemporaryDirectory
 from threading import Thread
-from time import sleep
 
 from playwright.sync_api import sync_playwright
 
@@ -86,6 +85,8 @@ def profile(view):
 
 EVENTS = """() => {
   window.flightInputEvents=[];
+  if (window.flightInputListening) return;
+  window.flightInputListening=true;
   for (const name of ['keydown','keyup','pointerdown','pointerup','pointercancel'])
     document.addEventListener(name,e=>flightInputEvents.push({name, trusted:e.isTrusted,
       ms:performance.now(),code:e.code,target:e.target.closest('#stick')?'stick':'canvas'}),true);
@@ -126,23 +127,26 @@ def interrupted_keyboard(view):
     measured = rate(view, before, "keydown", "keyup", lambda event: event.get("code") == "KeyW")
     require(104 < measured < 112, f"foreground stall lost held input at {measured:.2f} m/s")
 
-    view.page.evaluate("""() => {
-        window.flightFreezeEye=null;
-        document.addEventListener('freeze',()=>{flightFreezeEye=viewerPose().eye;},{once:true});
-    }""")
     before = position(view, 300)
     view.page.keyboard.down("w")
     view.page.wait_for_function("p=>viewerPose().eye[2]<p[2]-.1", arg=before["eye"])
-    view.cdp.send("Page.setWebLifecycleState", {"state": "frozen"})
-    sleep(0.45)
-    view.cdp.send("Page.setWebLifecycleState", {"state": "active"})
-    view.page.bring_to_front()
-    view.page.wait_for_function("!!window.flightFreezeEye")
+    # A second tab really transfers window focus in headless Chromium. Its
+    # visibility state can remain visible, so wait for the actual focus change.
+    view.cdp.send("Emulation.setFocusEmulationEnabled", {"enabled": False})
+    other = view.context.new_page()
+    try:
+        other.bring_to_front()
+        view.page.wait_for_function("!document.hasFocus()")
+        stopped = view.pose()["eye"]
+        view.page.wait_for_timeout(450)
+    finally:
+        other.close()
+        view.page.bring_to_front()
     view.page.wait_for_timeout(170)
     view.page.keyboard.up("w")
-    drift = math.dist(view.page.evaluate("flightFreezeEye"), view.pose()["eye"])
-    require(drift < 1e-7, f"resume advanced the old key by {drift:.5f} m")
-    return {"foreground_stall_m_s": measured, "resume_drift_m": drift}
+    drift = math.dist(stopped, view.pose()["eye"])
+    require(drift < 1e-7, f"returning to the tab advanced the old key by {drift:.5f} m")
+    return {"foreground_stall_m_s": measured, "return_to_tab_drift_m": drift}
 
 
 def desktop(view):

@@ -1,8 +1,21 @@
+import * as T from 'three'
 import { face } from './characterPropCraft.js'
 
 // Thin shell inlay on Ye Suxian's instrument. Each point lies on the original
 // faceted soundboard or concave back, so neither the image nor the pearl edge
 // hovers when the instrument is seen in profile.
+const pearlFinish = new T.MeshPhysicalMaterial({
+  name: '螺钿薄片',
+  vertexColors: true,
+  side: T.DoubleSide,
+  roughness: 0.34,
+  metalness: 0.12,
+  iridescence: 0.32,
+  iridescenceIOR: 1.33,
+  iridescenceThicknessRange: [110, 320],
+  clearcoat: 0.2,
+  clearcoatRoughness: 0.35,
+})
 export function pipaInlay(b, m, at, rows, segments) {
   const panels = [[], []]
   for (let j = 1; j < rows; j++)
@@ -51,7 +64,7 @@ export function pipaInlay(b, m, at, rows, segments) {
     for (let i = 1; i < cells.length; i++)
       for (let k = 0; k < 2; k++) {
         let patch = [cells[i - 1][k], cells[i][k], cells[i][k + 1], cells[i - 1][k + 1]]
-        if (patch.every(Boolean)) face(b, m.matte, tints[k], patch)
+        if (patch.every(Boolean)) face(b, pearlFinish, tints[k], patch)
       }
   }
   const green = [0x627b6d, 0x92a28a],
@@ -59,25 +72,35 @@ export function pipaInlay(b, m, at, rows, segments) {
     cool = [0x8ba99f, 0xc9d5bb],
     pink = [0xc78e85, 0xdfb8aa],
     gold = [0xb3915b, 0xd3ba8c]
-  // Grass orchids drift inwards from the rims, keeping the strings and the
-  // plucking area free. The split tones follow each piece of cut shell.
-  for (const side of [-1, 1]) {
-    const a = (x, y) => [side * x, side === 1 ? y : y + 0.009],
-      origin = a(0.067, 0.132)
-    petal(origin, a(0.118, 0.232), -0.015 * side, 0.0013, green, false, true)
-    petal(origin, a(0.122, 0.194), -0.016 * side, 0.0053, cool)
-    petal(origin, a(0.079, 0.226), 0.017 * side, 0.0038, green)
-    petal(a(0.086, 0.159), a(0.127, 0.202), 0.007 * side, 0.003, green)
-    const f = a(0.115, 0.224)
-    for (const [x, y, bow, w, tint] of [
-      [0.13, 0.251, 0.003, 0.0062, shell],
-      [0.104, 0.257, -0.003, 0.0054, pink],
-      [0.089, 0.239, -0.003, 0.0051, shell],
-      [0.135, 0.219, 0.001, 0.0045, cool],
-      [0.111, 0.21, -0.002, 0.0041, pink],
-    ])
-      petal(f, a(x, y), side * bow, w, tint)
-    petal(a(0.111, 0.222), a(0.117, 0.23), side * 0.001, 0.0033, gold)
+  // Individual shell slips turn in the light along the bird's wing.
+  // Their placement shares the local centre and tilt of the engraved design.
+  function kingfisher(x, y) {
+    const a = -0.19
+    return [
+      0.078 + 0.001 * (x * Math.cos(a) - y * Math.sin(a)),
+      0.157 + 0.001 * (x * Math.sin(a) + y * Math.cos(a)),
+    ]
+  }
+  for (const [x, y, ex, ey, bow, w, tones] of [
+    [-4, 19, 2, 15, 0.6, 0.88, cool],
+    [0.7, 16.2, 11.2, 7.6, -0.7, 1.03, green],
+    [2.6, 16.2, 13.6, 7.1, -0.6, 0.64, cool],
+    [4.8, 15.3, 14.9, 6.2, -0.35, 0.47, green],
+    [12.2, 4.1, 24.5, -6.1, 0.35, 0.88, cool],
+    [-8.6, 17.1, -4.4, 17.7, -0.22, 0.63, shell],
+  ])
+    petal(kingfisher(x, y), kingfisher(ex, ey), bow * 0.001, w * 0.001, tones)
+  // A fragment of shell in each flower catches the grazing boat lantern.
+  for (const [x, y, r, a] of [
+    [0.089, 0.204, 0.0048, 0.37],
+    [0.097, 0.199, 0.0057, 1.7],
+    [0.111, 0.193, 0.0044, 1.24],
+    [0.142, 0.157, 0.0055, 1.6],
+    [0.134, 0.136, 0.0045, 1],
+    [0.064, 0.163, 0.004, 1.4],
+  ]) {
+    const axis = a + 1.2
+    petal([x, y], [x - r * 0.88 * Math.sin(axis), y + r * 0.88 * Math.cos(axis)], 0.00032, r * 0.23, shell)
   }
   // A magpie turns its head among two long leaves on the lacquered back.
   const bird = [0.009, 0.239]
@@ -92,4 +115,8 @@ export function pipaInlay(b, m, at, rows, segments) {
   petal([-0.021, 0.211], [0.03, 0.253], -0.007, 0.0073, cool, true)
   petal([0.029, 0.259], [0.043, 0.278], -0.002, 0.0088, pink, true)
   petal([0.041, 0.273], [0.06, 0.269], 0.001, 0.0025, gold, true)
+  petal([-0.012, 0.215], [0.027, 0.249], -0.005, 0.00135, shell, true)
+  petal([-0.026, 0.2], [0.017, 0.236], -0.006, 0.0012, green, true)
+  petal([-0.038, 0.189], [0.011, 0.23], -0.006, 0.00087, gold, true)
+  petal([0.037, 0.27], [0.042, 0.272], 0.0001, 0.0012, green, true)
 }

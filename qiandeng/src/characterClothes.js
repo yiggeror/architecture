@@ -70,7 +70,7 @@ function tailoring(profile, rig) {
     line = new GarmentMesh(rig, art.cloth, '裁衣 · 麻布与里衬'),
     satin = new GarmentMesh(rig, art.silk, '裁衣 · 织纹与衣缘'),
     skin = new GarmentMesh(rig, art.skin, '身形 · 颈与手腕'),
-    brocade = signature ? new GarmentMesh(rig, signatureMaterial(), signature.name) : null
+    brocade = signature ? new GarmentMesh(rig, signatureMaterial(profile.pattern), signature.name) : null
   const y = (v) =>
     v >= 0.89
       ? mix(r.pelvis[1], r.head[1], (v - 0.89) / 0.57)
@@ -122,10 +122,26 @@ function tailoring(profile, rig) {
         (0.25 + 0.75 * (1 - step(0.91, 1.21, v))) +
       crossing +
       blade
+    let waist = 1,
+      chest = 0,
+      drop = 0
+    if (signature) {
+      const female = ['silk', 'lute'].includes(signature.key)
+      waist -= (female ? 0.087 : 0.034) * valley(v - 1.05, 0.107)
+      const pectoral = valley(v - (female ? 1.224 : 1.253), female ? 0.056 : 0.072)
+      chest = Math.max(co, 0) * (female ? 0.018 : 0.012) * pectoral * valley(side - 0.52, 0.36)
+      chest -= Math.max(co, 0) * 0.0031 * valley(side, 0.17) * valley(v - 1.264, 0.058)
+      const tether = 1.085 + 0.09 * si + 0.018 * Math.sin(3 * theta)
+      chest +=
+        (0.0072 * valley(v - tether, 0.016) - 0.0046 * valley(v - tether - 0.023, 0.014)) *
+        step(0.16, 0.76, side) *
+        (1 - step(0.94, 1, side))
+      drop = -0.0045 * side * side * valley(v - 1.342, 0.027)
+    }
     return [
-      x + (offset + folds) * si * h,
-      yLocal,
-      signedPower(co, 0.88) * (fDepth * girth + axisForm + lumbar + folds) * h + co * offset * h,
+      x * waist + (offset + folds) * si * h,
+      yLocal + drop * h,
+      signedPower(co, 0.88) * (fDepth * girth + axisForm + lumbar + folds + chest) * h + co * offset * h,
     ]
   }
   const working = ['row', 'carrier', 'porter', 'drum'].includes(profile.job)
@@ -317,6 +333,9 @@ function sleeveSection(a, side, sign, t, phi, ease, radial = 0, exposed = false)
     bottom = armT <= 1 ? elbow : wrist
   const center = between(top, bottom, armT <= 1 ? armT : armT - 1)
   const local = sample(sleeveRadius, t)
+  const fitted = a.signature && !exposed
+  const commission = a.signature?.key
+  const bell = (d, width) => Math.exp(-(d * d) / (width * width))
   const shoulderVolume = 0.0015 * (1 - step(0.12, 0.43, t)) * (0.5 + 0.5 * c)
   const amplitude = exposed ? 0 : 0.0023 + 0.085 * ease
   const drape =
@@ -330,8 +349,54 @@ function sleeveSection(a, side, sign, t, phi, ease, radial = 0, exposed = false)
       Math.cos(30 * t + 2.2 * Math.sin(phi)) *
       (step(0.64, 0.88, t) * (1 - step(1.23, 1.66, t)) + 0.8 * step(1.63, 1.91, t))
   const dim = Math.pow(a.girth, 0.23)
-  const lateral = (local[0] * dim + extra + shoulderVolume + drape + bunch + radial) * h
+  let lateral = (local[0] * dim + extra + shoulderVolume + drape + bunch + radial) * h
   let deep = (local[1] * dim + extra + drape + bunch + radial) * h
+  let dragX = 0,
+    dragY = 0,
+    dragZ = 0
+  if (fitted) {
+    const female = commission === 'silk' || commission === 'lute'
+    const limb = step(0.07, 0.56, t)
+    // The inner elbow catches three short, converging folds. Across the
+    // triceps the same cloth stretches smooth. The forearm twists away from
+    // these tucks towards the gathering stitch at the wrist.
+    const trough = 0.93 + 0.105 * Math.cos(phi + 0.42 * sign) - 0.043 * Math.sin(2 * phi)
+    const insideBend = 0.27 + 0.73 * step(-0.85, 0.66, s)
+    const radius =
+      ((0.012 * bell(t - trough, 0.049) -
+        0.007 * bell(t - trough + 0.068, 0.037) +
+        0.008 * bell(t - trough - 0.135, 0.046) -
+        0.005 * bell(t - trough - 0.189, 0.043)) *
+        insideBend +
+        0.005 * bell(t - 1.49 - 0.11 * Math.cos(phi), 0.058) +
+        0.0038 * Math.sin(4 * phi + 1.32 * t) * step(0.35, 0.79, t)) *
+      h
+    const reduce = female ? 0.72 : commission === 'drummer' ? 0.82 : 0.86
+    lateral =
+      (local[0] * dim * (1 - (1 - reduce) * limb) + extra * 0.55 + shoulderVolume + drape + radial) * h +
+      radius
+    deep = (local[1] * dim * (1 - (1 - reduce) * limb) + extra * 0.53 + drape + radial) * h + radius * 0.85
+    const gathered = Math.sin(
+      Math.PI * step(0.32, commission === 'lute' ? (side === 'l' ? 1.62 : 1.8) : 1.96, t)
+    )
+    const bias = 0.49 + 0.51 * Math.cos(phi - (sign > 0 ? -0.9 : -1.6) + t * 0.79)
+    // Gravity in the bind frame of the posed forearm; the player pulls the
+    // left sleeve back from her fretting hand. The loose silk accumulates at
+    // the crook and hangs mostly under the opposite, horizontal forearm.
+    if (commission === 'lute') {
+      dragZ = -h * (0.009 + (side === 'r' ? 0.023 : 0.029) * bias) * gathered
+      dragY = h * (side === 'l' ? 0.026 : -0.012) * gathered * (0.35 + 0.65 * bias)
+      dragX = -sign * 0.007 * h * gathered
+    } else {
+      dragZ =
+        -h *
+        0.017 *
+        bias *
+        gathered *
+        ((commission === 'silk' && side === 'l') || (commission === 'scholar' && side === 'r') ? 1 : 0.23)
+      dragY = -h * (commission === 'silk' ? 0.023 : 0.013) * gathered * (0.25 + 0.75 * bias)
+    }
+  }
   const join = exposed ? step(1.87, 2.045, t) : 0
   const wristSide = mix(lateral, 0.0149 * h, join)
   deep = mix(deep, 0.0203 * h, join)
@@ -341,9 +406,9 @@ function sleeveSection(a, side, sign, t, phi, ease, radial = 0, exposed = false)
   const inside = step(0.13, 0.94, -c) * (1 - step(0.38, 0.76, t))
   const insideEdge = sign * a.shoulder * (0.168 + 0.016 * Math.min(1, t / 0.76))
   return [
-    mix(center[0] + sign * c * wristSide, insideEdge, inside),
-    center[1] + sign * c * wristSide * slopeX + s * deep * slopeZ - under * h,
-    center[2] + s * deep,
+    mix(center[0] + sign * c * wristSide + dragX, insideEdge, inside),
+    center[1] + sign * c * wristSide * slopeX + s * deep * slopeZ - under * h + dragY,
+    center[2] + s * deep + dragZ,
   ]
 }
 function makeSleeve(a, side, sign, angles, rim) {
@@ -425,6 +490,12 @@ function makeSleeve(a, side, sign, angles, rim) {
   let stations = first.concat(
     [0.72, 0.79, 0.9, 1, 1.1, 1.25, 1.42, 1.54, 1.67, 1.82].filter((t) => t < bodyEnd - 0.105)
   )
+  if (a.signature) {
+    const extraRows = [
+      0.47, 0.61, 0.82, 0.856, 0.935, 0.966, 1.034, 1.065, 1.143, 1.183, 1.31, 1.37, 1.48, 1.585, 1.735,
+    ]
+    stations = [...stations, ...extraRows.filter((t) => t < bodyEnd - 0.09)].sort((l, r) => l - r)
+  }
   const cuffWidth = short ? 0.079 : rolled ? 0.19 : 0.103
   stations = stations.filter((t) => t < bodyEnd - cuffWidth)
   stations.push(bodyEnd - cuffWidth, bodyEnd - cuffWidth + 0.012)
@@ -627,14 +698,27 @@ function throat(a) {
   const nape = fit[1], ridge = fit[2]
   const bell = (p, centre, radius) => Math.exp(-(((p - centre) / radius) ** 2))
   function section(y, theta, w, d, z) {
-    const c = Math.cos(theta), s = Math.sin(theta), rear = Math.max(0, -c)
+    const c = Math.cos(theta),
+      s = Math.sin(theta),
+      rear = Math.max(0, -c)
     const angle = Math.acos(c)
     const height = step(1.369, 1.525, y)
-    const mastoid = .0037 * bell(angle, .39 + height * 1.65, .20) * Math.sin(Math.PI * height)
-    const airway = ridge * bell(y, 1.438, .013) * Math.max(c, 0) ** 8
-    const underEar = rear * (1 + .30 * Math.abs(s)) * step(1.423, 1.495, y)
-    return [s * (w * width + mastoid) * h, y > 1.46 ? r.head[1] + (y - 1.46) * h : a.y(y),
-      h * (z + c * (d * (1 + (nape - 1) * rear) + mastoid + airway + .008 * underEar))]
+    const mastoid = 0.0062 * bell(angle, 0.39 + height * 1.69, 0.22) * Math.sin(Math.PI * height)
+    const root = 0.0078 * bell(y, 1.413, 0.019) * (0.24 + 0.76 * rear)
+    const occiput = 0.005 * bell(y, 1.494, 0.024) * rear
+    const nuchal = 0.0041 * bell(y, 1.438, 0.038) * rear * bell(Math.abs(s), 0.34, 0.24)
+    const airway = ridge * bell(y, 1.438, 0.013) * Math.max(c, 0) ** 8
+    const underEar = rear * (1 + 0.3 * Math.abs(s)) * step(1.423, 1.495, y)
+    // Taper the back midline into the underside of the occiput. The heads
+    // are sculpted up from the mandible, so a circular high neck would pierce
+    // both the posterior skull and the separate tapered hairs at this level.
+    const tuck = (0.017 + 0.032 * (nape - 1)) * bell(y, 1.502, 0.036) * rear ** 1.5 * (0.74 + 0.26 * rear)
+    return [
+      s * (w * width + mastoid + root + occiput) * h,
+      y > 1.46 ? r.head[1] + (y - 1.46) * h : a.y(y),
+      h *
+        (z + c * (d * (1 + (nape - 1) * rear) + mastoid + root + airway + nuchal + 0.009 * underEar - tuck)),
+    ]
   }
   let prev
   // The shoulder opening and the underside of the jaw are opposite edges of
@@ -650,7 +734,7 @@ function throat(a) {
         si = Math.sin(th)
       const end = section(yy, th, .044, .042, -.0015)
       const start = a.torsoPoint(lo, th, 0.001)
-      const toward = 1 - (1 - v) ** 1.58
+      const toward = 1 - (1 - v) ** (1.22 + 0.48 * Math.max(c, 0))
       const clavicle = .0023 * bell(v, .31, .13) * Math.max(c, 0) * Math.abs(si)
       const p = [mix(start[0], end[0], toward), a.y(yy) + h * clavicle, mix(start[2], end[2], toward)]
       const w = addWeights(a.torsoWeight(lo, th), 'neck', 0.94 * step(0, 1, v))
@@ -665,9 +749,9 @@ function throat(a) {
     [1.437, 0.043, 0.041, -0.001],
     [1.45, 0.0425, 0.0405, -0.002],
     [1.461, 0.043, 0.04, -0.0035],
-    [1.476, 0.044, 0.039, -0.006],
-    [1.49, 0.043, 0.040, -0.012],
-    [1.507, 0.041, 0.039, -0.017],
+    [1.476, 0.0455, 0.0415, -0.006],
+    [1.49, 0.047, 0.043, -0.012],
+    [1.507, 0.045, 0.041, -0.017],
     [1.525, 0.036, 0.032, -0.017],
     [1.541, 0.027, 0.024, -0.015],
   ]

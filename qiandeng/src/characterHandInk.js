@@ -6,6 +6,28 @@ export function handUV(panel, u, v) {
   return [a + (b - a) * u, 0.015 + 0.97 * v]
 }
 
+// The nail plate takes a tighter reflection than the surrounding skin. The
+// same atlas panel used by its pigment sets that boundary in the GLB material.
+export function makeHandFinish() {
+  const c =
+    typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(256, 4)
+      : typeof document !== 'undefined'
+        ? document.createElement('canvas')
+        : null
+  if (!c) return null
+  c.width = 256
+  c.height = 4
+  const ctx = c.getContext('2d')
+  ctx.fillStyle = '#00ff00'
+  ctx.fillRect(0, 0, 256, 4)
+  ctx.fillStyle = '#007d00'
+  ctx.fillRect(panels.nail[0] * 256, 0, 256, 4)
+  const texture = new T.CanvasTexture(c)
+  texture.name = '掌肤与甲面光泽'
+  return texture
+}
+
 // Original low-contrast ink under the skin wash. The extensor tendons fan
 // toward four individual knuckles and the creases wrap around the cylinders.
 export function makeHandInk() {
@@ -66,7 +88,8 @@ export function makeHandInk() {
   paint('back', (stroke, wash) => {
     for (const [i, x] of [0.145, 0.385, 0.627, 0.864].entries()) {
       const y = 0.91 - 0.045 * Math.abs(i - 1.6)
-      wash(x, y, 0.101, 0.115, '#c68c76', 0.24)
+      wash(x, y, 0.095, 0.12, '#c28174', 0.33)
+      wash(x + 0.085, y - 0.12, 0.044, 0.12, '#ba9d94', 0.12)
       const u = 0.42 + (x - 0.5) * 0.52
       stroke(
         [
@@ -75,8 +98,8 @@ export function makeHandInk() {
           [x + 0.052, 0.58],
           [x + 0.007, y - 0.03],
         ],
-        0.011,
-        0.13,
+        0.012,
+        0.1,
         '#b5a196',
       )
       stroke(
@@ -85,9 +108,9 @@ export function makeHandInk() {
           [x + 0.048, 0.59],
           [x + 0.01, y - 0.075],
         ],
-        0.004,
-        0.24,
-        '#a18878',
+        0.0035,
+        0.14,
+        '#aa897a',
       )
       for (let j = 0; j < 2; j++)
         stroke(
@@ -244,7 +267,7 @@ export function makeHandInk() {
         [0.337, 3],
         [0.665, 2],
       ]) {
-        wash(phase, center, 0.17, 0.062, '#c1917d', 0.21)
+        wash(phase, center, 0.16, 0.07, '#c59383', 0.29)
         for (let j = 0; j < n; j++) {
           const y = center + (0.017 * j - 0.013)
           stroke(

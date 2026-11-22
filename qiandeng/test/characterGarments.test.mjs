@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import * as T from 'three'
 import { MeshBVH } from 'three-mesh-bvh'
 import { buildClothing } from '../src/characterClothes.js'
@@ -112,6 +113,21 @@ test('the same citizen can try four woven patterns without changing the pattern 
     }
   }
   assert.equal(seen.size, 4)
+})
+
+test('trial embroidery changes the outer signature panel and its stitch relief', () => {
+  const profile = characterProfile(47, 'umbrella')
+  const images = new Set(), normals = new Set(), lustres = new Set()
+  const hash = (map) => createHash('sha256').update(map.image.data).digest('hex')
+  for (const pattern of ['plain', 'plum', 'reed', 'cloud']) {
+    const { clothing } = fit(characterVariant(profile, { pattern }))
+    const panel = clothing.children.find(mesh => mesh.material.name === '分裁织锦与绣线')
+    assert(panel)
+    images.add(hash(panel.material.map))
+    normals.add(hash(panel.material.normalMap))
+    lustres.add(hash(panel.material.roughnessMap))
+  }
+  for (const set of [images, normals, lustres]) assert.equal(set.size, 4)
 })
 
 test('height variation scales every sleeve, collar and ankle once', () => {

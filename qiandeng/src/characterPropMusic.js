@@ -1,6 +1,7 @@
 import { colors as c, pigment, piece, rod, box, face, stroke, ring, oval, tau } from './characterPropCraft.js'
 import { buildSweep } from './fleetBoats.js'
 import { sweepStation } from './characterPropCrew.js'
+import { pipaFittings } from './characterPropPipaFittings.js'
 import { pipaInlay } from './characterPropInlay.js'
 import { bellyRings, bellySegments, bellyPoint, pipaBody, pipaNeck } from './characterPropPipaBody.js'
 import * as T from 'three'
@@ -213,95 +214,29 @@ export function pipaStringPoint(string, y, out) {
 
 export function pipa(m, design) {
   const instrument = piece('螺钿四弦琵琶', (b) => {
-    for (const sg of [-1, 1])
-      stroke(
-        b,
-        m.matte,
-        c.ink,
-        bellyRings.map(([y, w]) => [sg * w, y, 0.019]),
-        0.004,
-        6,
-      )
-    for (let j = 0; j < 18; j++) {
-      const y = 0.24 + 0.03 * j - 0.00042 * j * j,
-        w = Math.max(0.027, 0.079 - (y - 0.22) * 0.112)
-      if (y >= 0.462) continue
-      box(b, m.matte, j < 7 ? c.honey : c.ivory, [0, y, 0.031], [w, 0.0049, 0.009])
-    }
-    box(b, m.matte, c.ink, [0, 0.081, 0.03], [0.108, 0.031, 0.022])
-    box(b, m.matte, c.ivory, [0, 0.089, 0.043], [0.086, 0.005, 0.006])
-    for (const sg of [-1, 1]) {
-      const x = sg * 0.112
-      stroke(
-        b,
-        m.matte,
-        c.ink,
-        [
-          [x - sg * 0.019, 0.122, 0.03],
-          [x, 0.13, 0.031],
-          [x + sg * 0.014, 0.149, 0.028],
-          [x + sg * 0.003, 0.16, 0.03],
-          [x - sg * 0.007, 0.154, 0.03],
-        ],
-        0.0023,
-        5,
-      )
-      for (let i = 0; design !== 'lute' && i < 6; i++) {
-        const a = (tau * i) / 6
-        oval(
-          b,
-          m.matte,
-          i % 2 ? c.pearl : 0x93aaa0,
-          [sg * 0.097 + 0.011 * Math.cos(a), 0.203 + 0.011 * Math.sin(a), 0.031],
-          [0.005, 0.009, 0.0014],
-          7,
-          4,
-        )
-      }
-    }
+    pipaFittings(b, m, bellyRings)
     if (design === 'lute') pipaInlay(b, m, bellyPoint, bellyRings.length, bellySegments)
-    const neck = [
-      [0, 0.678, 0.004],
-      [0, 0.728, -0.016],
-      [0, 0.755, -0.051],
-      [0, 0.752, -0.084],
-    ]
-    stroke(b, m.matte, c.wood, neck, 0.02, 9)
-    oval(b, m.matte, c.ink, [0, 0.748, -0.084], [0.031, 0.023, 0.024], 12, 6)
-    for (let k = 0; k < 4; k++) {
-      const sg = k % 2 ? 1 : -1,
-        y = 0.676 + 0.02 * k
-      rod(
-        b,
-        m.matte,
-        c.ink,
-        [sg * 0.012, y, -0.01 - k * 0.009],
-        [sg * 0.05, y + 0.004, -0.014 - k * 0.009],
-        0.006,
-        0.007,
-        8,
-      )
-      oval(b, m.matte, c.honey, [sg * 0.059, y + 0.004, -0.014 - k * 0.009], [0.014, 0.011, 0.008], 9, 5)
-    }
   })
   const strings = piece('四根丝弦', (b) => {
     const p = new T.Vector3()
     for (let k = 0; k < 4; k++) {
       const sg = k % 2 ? 1 : -1,
-        y = 0.676 + 0.02 * k
-      stroke(
-        b,
-        m.metal,
-        k % 2 ? 0xdbb888 : 0xf2d6a5,
-        [
-          pipaStringPoint(k, 0.079, p).toArray(),
-          pipaStringPoint(k, 0.447, p).toArray(),
-          pipaStringPoint(k, 0.675, p).toArray(),
-          [sg * 0.017, y, -0.013 - k * 0.005],
-        ],
-        0.00115,
-        6,
-      )
+        y = 0.679 + 0.0191 * k
+      const axleZ = -0.002 - 0.0115 * k,
+        colour = [0xc4a47d, 0xd4b994, 0xe1c7a3, 0xe8d4b1][k]
+      const chain = [
+        pipaStringPoint(k, 0.079, p).toArray(),
+        pipaStringPoint(k, 0.447, p).toArray(),
+        pipaStringPoint(k, 0.675, p).toArray(),
+        [sg * 0.013, y + 0.006, axleZ + 0.0045],
+      ]
+      // Each silk strand continues over the nut and winds twice around
+      // its own wooden axle inside the box.
+      for (let i = 0; i <= 20; i++) {
+        const a = (Math.PI * 4 * i) / 20
+        chain.push([sg * (0.015 + i * 0.00013), y + 0.005 * Math.cos(a), axleZ + 0.005 * Math.sin(a)])
+      }
+      stroke(b, m.metal, colour, chain, [0.0012, 0.00114, 0.00106, 0.001][k], 6)
     }
   })
   instrument.add(strings, ...pipaBody(m), ...pipaNeck(m))

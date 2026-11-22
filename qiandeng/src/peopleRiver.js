@@ -455,7 +455,7 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
     const seated = ['row', 'sit', 'lute'].includes(p.job)
     const focus = new T.Vector3(0, seated ? 1.0 : 1.34 * p.profile.height, 0.02).applyMatrix4(matrix)
     const forward = new T.Vector3(0, 0, 1).transformDirection(matrix)
-    return { id, name: p.profile.name, job: p.job, matrix, focus, forward }
+    return { id, name: p.profile.name, design: p.profile.design, job: p.job, matrix, focus, forward }
   }
   return people
 }

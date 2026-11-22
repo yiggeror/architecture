@@ -132,7 +132,33 @@ def verify_glb(download, filename):
     target = eyelids['channels'][0]['target']
     assert target['path'] == 'weights' and asset['nodes'][target['node']]['name'] == '上下眼睑'
     eyelid_mesh = asset['meshes'][asset['nodes'][target['node']]['mesh']]
-    assert eyelid_mesh['extras']['targetNames'] == ['闭眼']
+    names = eyelid_mesh['extras']['targetNames']
+    blink_index = names.index('闭眼')
+    binary = 20 + length + 8
+
+    def weights(clip, channel):
+        sampler = clip['samplers'][channel['sampler']]
+        times = asset['accessors'][sampler['input']]
+        values = asset['accessors'][sampler['output']]
+        assert values['type'] == 'SCALAR' and values['componentType'] == 5126
+        assert values['count'] == times['count'] * len(names)
+        view = asset['bufferViews'][values['bufferView']]
+        start = binary + view.get('byteOffset', 0) + values.get('byteOffset', 0)
+        return list(struct.iter_unpack('<' + 'f' * len(names), data[start:start + 4 * values['count']]))
+
+    blink = weights(eyelids, eyelids['channels'][0])
+    assert blink[0][blink_index] == blink[-1][blink_index] == 0
+    assert max(row[blink_index] for row in blink) == 1
+    assert all(value == 0 for row in blink for i, value in enumerate(row) if i != blink_index)
+
+    action = next(clip for clip in asset['animations'] if clip is not eyelids)
+    lid_channel = next(channel for channel in action['channels'] if channel['target'] == target)
+    performance = weights(action, lid_channel)
+    assert min(row[blink_index] for row in performance) < max(row[blink_index] for row in performance)
+    if '扬眉' in names:
+        brow_index = names.index('扬眉')
+        brows = [row[brow_index] for row in performance]
+        assert min(brows) >= 0 and max(brows) <= 1 and max(brows) - min(brows) > .1
     return {'bytes':count, 'images':len(images), 'clips':len(asset['animations'])}
 
 
@@ -205,6 +231,17 @@ def desktop(browser, url, folder):
                             document.querySelector('.leaf').getBoundingClientRect().bottom""")
     fixed = sample(page)
     original = source_frame(page)
+    page.click('#clay-face')
+    settled(page)
+    assert page.locator('#clay-face').get_attribute('aria-pressed') == 'true'
+    assert diff(original, source_frame(page)) > 3
+    assert math.dist(fixed['eye'], sample(page)['eye']) < .000001
+    page.click('#clay-face')
+    settled(page)
+    assert diff(original, source_frame(page)) < .08
+    # Compare woven motifs where their cut panels are actually in frame.
+    page.click('[data-view-choice="full"]')
+    settled(page)
     page.select_option('#trial-pattern', 'plain')
     settled(page)
     plain = source_frame(page)
@@ -213,6 +250,13 @@ def desktop(browser, url, folder):
         settled(page)
         assert diff(plain, source_frame(page)) > .04, pattern
     page.click('#trial-reset')
+    page.click('[data-view-choice="portrait"]')
+    page.click('[data-zoom="in"]')
+    page.locator('#figure').press('ArrowRight')
+    # Keep keyboard focus on the same form control for both pixel comparisons.
+    page.locator('#trial-hair').focus()
+    fixed = sample(page)
+    original = source_frame(page)
     page.select_option('#trial-hair', 'braid')
     page.select_option('#trial-garment', 'changshan')
     page.select_option('#trial-pattern', 'plum')
@@ -232,6 +276,7 @@ def desktop(browser, url, folder):
     assert page.locator('#scrub').input_value() == '483'
     assert math.dist(remade['eye'], again['eye']) < .000001 and math.dist(remade['joints'], again['joints']) < .000001
     page.click('#trial-reset')
+    page.locator('#trial-hair').focus()
     restored = sample(page)
     assert page.locator('#trial-status').inner_text() == '原样'
     assert math.dist(fixed['joints'], restored['joints']) < .000001

@@ -7,27 +7,27 @@ const rgb = (hex) => [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255]
 const blend = (a, b, t) => a.map((v, k) => Math.round(v + (b[k] - v) * t))
 const swatches = [
   // Merchant: kingfisher waistcoat, duck-egg inset, skirt face and rolled guard.
-  [0x26605a, 0x356f66],
-  [0x80aa9d, 0x98b8a5],
-  [0x24565a, 0x366b68],
-  [0x376960, 0x477767],
+  [0x769e91, 0xc5d8b9],
+  [0x8cb2a4, 0xd1dbc6],
+  [0x244f51, 0x527a6f],
+  [0x365f59, 0x6a9180],
   // Musician: enveloping overshirt, lotus-ash skirt, ivory pibo and mauve borders.
-  [0xb27f8a, 0xc99aa0],
-  [0x936978, 0xb89296],
-  [0xe8cdb6, 0xf0d9be],
-  [0x955f73, 0xb07d87],
+  [0xaa697b, 0xdeb6b2],
+  [0x9e6275, 0xe4b8af],
+  [0xe0c8b9, 0xf4e8d0],
+  [0x804358, 0xb3727d],
   // Scholar: blue-black hechang, misty bamboo, broken water, card-woven selvedge.
-  [0x354e61, 0x496576],
-  [0x546e7c, 0x6e8993],
-  [0x667e86, 0x849797],
+  [0x263e50, 0x4f7181],
+  [0x577b89, 0x99b5b9],
+  [0x6e8b96, 0xb9ccca],
   [0x405867, 0x556d75],
   // Drummer: pomegranate jacket, scale cloth, fish roundel, bronze-key borders.
-  [0x9f433d, 0xb75145],
-  [0x293c48, 0x374957],
-  [0x803c3b, 0x9b4942],
+  [0x933c38, 0xd06b50],
+  [0x2c3749, 0x485d70],
+  [0x89332e, 0xbc5542],
   [0x39464b, 0x534e4c],
 ]
-let material
+const materials = new Map()
 export function costumeUV(cell, u, v) {
   const edge = 0.008
   return [
@@ -35,7 +35,7 @@ export function costumeUV(cell, u, v) {
     (Math.floor(cell / 4) + edge + (1 - 2 * edge) * v) / 4,
   ]
 }
-function paintAtlas() {
+function paintAtlas(pattern) {
   const data = new Uint8Array(size * size * 4)
   const relief = new Uint8Array(size * size)
   let ox = 0,
@@ -116,11 +116,7 @@ function paintAtlas() {
       }
       hits.sort((a, b) => a - b)
       for (let j = 0; j + 1 < hits.length; j += 2)
-        for (
-          let x = Math.max(0, Math.floor(hits[j]));
-          x <= Math.min(side - 1, Math.ceil(hits[j + 1]));
-          x++
-        ) {
+        for (let x = Math.max(0, Math.floor(hits[j])); x <= Math.min(side - 1, Math.ceil(hits[j + 1])); x++) {
           const o = Math.min(x + 1, hits[j + 1]) - Math.max(x, hits[j])
           if (o > 0) dab(x, y, col, opacity * o)
         }
@@ -252,6 +248,48 @@ function paintAtlas() {
     line(p, color, w, 0.96, true)
     return p
   }
+  // The magnolia opens upwards out of a narrow calyx. Outer petals curl back
+  // and expose the warm lining, the pale inner petals stay long and upright.
+  function yulan(x, y, r, angle) {
+    const ca = Math.cos(angle),
+      sa = Math.sin(angle)
+    const put = (dx, dy) => [x + r * (dx * ca - dy * sa), y + r * (dx * sa + dy * ca)]
+    const petals = [
+      [-0.81, 0.54, -0.35, 0.29, 0xc4ac97],
+      [-0.46, 0.96, -0.24, 0.25, 0xdcc6ae],
+      [0.35, 1.05, 0.25, 0.24, 0xd9c9ad],
+      [0.88, 0.68, 0.52, 0.29, 0xbca98f],
+      [0.22, 1.1, 0.08, 0.32, 0xf5e6c5],
+      [-0.84, 0.34, -0.34, 0.22, 0xeddfc4],
+      [-0.27, 0.8, -0.06, 0.29, 0xf4e6d1],
+      [0.62, 0.5, 0.19, 0.24, 0xe6d5b5],
+    ]
+    for (const [ex, ey, bend, width, col] of petals) {
+      const mid = (t) => [
+        ex * t + (bend - ex * 0.43) * Math.sin(t * Math.PI),
+        ey * (t - 0.13 * Math.sin(t * Math.PI * 2)),
+      ]
+      const point = (t, side) => {
+        const [px, py] = mid(t),
+          sw = width * Math.sin(Math.PI * t) ** 0.74
+        return put(px + side * sw, py - side * sw * ex * 0.24)
+      }
+      const outline = Array.from({ length: 18 }, (_, i) => point(i / 17, -1)).concat(
+        Array.from({ length: 18 }, (_, i) => point(1 - i / 17, 1))
+      )
+      fill(outline, col)
+      line(outline, 0x9c8b75, 0.75, 0.84, true)
+      for (const k of [-0.65, -0.36, 0.14, 0.49])
+        line(
+          Array.from({ length: 13 }, (_, i) => point(0.12 + (0.72 * i) / 12, k)),
+          k < 0 ? 0xd1bba7 : 0xffecd1,
+          0.66,
+          0.8,
+          true
+        )
+    }
+    leaf(x, y, -0.19 * r, -0.23 * r, 0.11 * r, 0x9a9f77, 0x697b63, 0xb9ae88)
+  }
   function magnolia(x, y, s, mir = 1) {
     const P = (a, b) => [x + mir * a * s, y + b * s]
     const branch = (x0, y0, x1, y1, x2, y2, x3, y3, w) => {
@@ -279,7 +317,7 @@ function paintAtlas() {
       [19, 48, 8, 0.76],
     ]) {
       const p = P(xx, yy)
-      flower(...p, r * s, ang, [0xe6d6ab, 0xf8e8ca, 0xcbb99b, 0xa18669, 0xe1bd72], 5)
+      yulan(...p, r * s * 1.35, (ang - 1.25) * mir)
     }
   }
   function lotus(x, y, s, flip = 1) {
@@ -379,8 +417,8 @@ function paintAtlas() {
         ...bez(P(-17, -10), P(-9, 15), P(10, 17), P(17, 9)),
         ...bez(P(17, 9), P(19, 4), P(12, -8), P(-17, -10)),
       ]
-    fill(body, 0xca8460)
-    line(body, 0xe0b778, 1.32 * s)
+    fill(body, 0xb97a57)
+    line(body, 0xdfbe86, 1.17 * s)
     for (const sign of [-1, 1]) {
       const pts = [
         ...bez(P(-16, -9), P(-27, -8), P(-36, -5 + sign * 4), P(-30, -14 + sign * 9)),
@@ -412,6 +450,35 @@ function paintAtlas() {
       }
     }
   }
+  function floweringBranch(x, y, scale, direction) {
+    const pos = (u, v) => [x + direction * scale * u, y + scale * v]
+    const bark = 0x704c4c
+    stroke(pos(-33, -6), pos(3, 0), pos(26, 50), pos(76, 81), bark, 3.3)
+    stroke(pos(15, 29), pos(31, 38), pos(49, 30), pos(65, 48), bark, 1.8)
+    stroke(pos(39, 57), pos(46, 70), pos(38, 79), pos(47, 92), bark, 1.45)
+    const petals = [0xd98b88, 0xf2b8a6, 0xf1cbb4, 0x9b5b66, 0xdfb879]
+    for (const [u, v, radius, angle] of [[9,19,8,.2],[26,42,7,.8],[43,58,10,.5],[50,38,6,.1],[65,47,5,.8],[52,72,7,.4],[46,90,5,.1]]) {
+      const [cx, cy] = pos(u, v)
+      flower(cx, cy, scale * radius, angle, petals, 5)
+    }
+  }
+  function trialPanel(pattern, n) {
+    if (pattern === 'plain') return
+    const flip = n % 2 ? -1 : 1
+    const x = flip === 1 ? 51 : 205
+    if (pattern === 'plum') {
+      laid(32, .69, () => floweringBranch(x, 32, 1.08, flip))
+      laid(159, .69, () => floweringBranch(256 - x, 159, .68, -flip))
+    } else if (pattern === 'reed') {
+      laid(21, .77, () => bamboo(x, 21, 1.17, flip))
+      laid(93, .68, () => bamboo(256 - x, 93, .69, -flip))
+    } else {
+      for (const [cx, cy, scale] of [[57,38,1.02],[147,78,.81],[203,144,.91],[68,184,.78]]) {
+        cloud(flip === 1 ? cx : 256 - cx, cy, scale, 0xd7b986)
+      }
+      waves(12, 3, 0xb6c5ac, 4)
+    }
+  }
   const bronze = 0xc6a478,
     pearl = 0xe4d2b0
   for (let n = 0; n < 16; n++) {
@@ -420,10 +487,10 @@ function paintAtlas() {
     for (let y = 0; y < side; y++)
       for (let x = 0; x < side; x++) {
         const grad =
-          0.28 +
-          0.4 * (y / side) +
-          0.17 * Math.sin(x * 0.018 + y * 0.007) +
-          0.06 * Math.cos(0.052 * y - 0.02 * x)
+          0.19 +
+          0.63 * (y / side) +
+          0.11 * Math.sin(x * 0.016 + y * 0.009) +
+          0.055 * Math.cos(x * 0.047 - y * 0.009)
         const c = blend(a, b, grad),
           r = pixel(x, y),
           thread =
@@ -434,9 +501,14 @@ function paintAtlas() {
         data[r + 3] = 255
         relief[r >> 2] = 65 + thread * 7
       }
+    // A sample replaces the field of each garment panel. Its turned binding
+    // keeps the tailor's original stripe; the new stitches also feed the normal map.
+    if (pattern && n % 4 !== 3) {
+      trialPanel(pattern, n)
+      continue
+    }
     if (n === 0) {
-      laid(11, 0.47, () => magnolia(28, 11, 1.36))
-      laid(143, 0.42, () => magnolia(220, 143, 0.85, -1))
+      laid(12, 0.44, () => magnolia(185, 12, 0.96, -1))
       for (const p of [
         [176, 64, 0.65],
         [126, 185, 0.52],
@@ -445,15 +517,15 @@ function paintAtlas() {
     }
     if (n === 1) {
       laid(16, 0.55, () => magnolia(22, 16, 1.02))
-      laid(143, 0.46, () => magnolia(215, 143, 0.74, -1))
+
       waves(8, 3, 0xceb98a, 3)
     }
     if (n === 2) {
       // The main flowering branch sweeps across the flat horse face. Its
       // fine fan of stems is placed above the narrow woven wave guard.
-      laid(29, 0.45, () => magnolia(36, 29, 1.55))
-      laid(56, 0.36, () => magnolia(229, 56, 1.05, -1))
-      laid(138, 0.38, () => magnolia(195, 138, 0.81, -1))
+      laid(26, 0.58, () => magnolia(29, 26, 1.82))
+      laid(58, 0.66, () => magnolia(217, 58, 0.84, -1))
+
       for (const [x, y] of [
         [26, 165],
         [80, 207],
@@ -465,38 +537,23 @@ function paintAtlas() {
       waves(5, 2, pearl, 3)
     }
     if (n === 3) {
-      for (const h of [20, 97, 177])
-        for (const x of [15, 99, 182, 265]) {
-          cloud(x, h, 1, bronze)
-          leaf(x + 2, h + 27, 42, 16, 4, 0x83a28b, 0x577d73, bronze)
-        }
+      waves(8, 2, 0xb09a74, 3)
+      // A narrow woven end guard leaves the knife pleats in uninterrupted silk.
+      for (const x of [0, 66, 133, 200, 267]) cloud(x, 21, 0.74, 0x9eab87)
     }
     if (n === 4) {
-      laid(74, 0.44, () => lotus(52, 74, 1.3))
-      laid(181, 0.42, () => lotus(172, 181, 0.91, -1))
-      for (const [x, y, r] of [
-        [142, 47, 16],
-        [208, 91, 10],
-        [76, 207, 13],
-      ])
-        laid(y, 0.48, () => flower(x, y, r, 0.35, [0xd7aaa8, 0xf3d4c1, 0xb98591, 0x976c7c, 0xd8b587], 5))
+      laid(25, 0.57, () => lotus(210, 25, 0.91, -1))
+      waves(8, 2, 0xc8a296, 2)
     }
     if (n === 5) {
-      laid(38, 0.36, () => lotus(79, 38, 2.08))
-      laid(50, 0.32, () => lotus(186, 50, 1.15, -1))
-      laid(139, 0.37, () => lotus(119, 139, 0.92, -1))
+      laid(35, 0.69, () => lotus(39, 35, 1.32))
+      laid(45, 0.67, () => lotus(82, 45, 0.7, -1))
       waves(8, 2, 0xd5b2a4, 2)
-      for (const [x, y] of [
-        [38, 155],
-        [183, 187],
-        [122, 223],
-      ])
-        laid(y, 0.3, () => ellipse(x, y, 8, 4, 0.75, 0xc39b9d, 0xe0bdb0))
     }
     if (n === 6) {
-      for (const y of [19, 99, 179]) {
+      for (const y of [23]) {
         lotus(70, y + 24, 0.55)
-        lotus(190, y + 45, 0.44, -1)
+
         stroke([1, y], [70, y + 24], [120, y - 19], [255, y + 12], 0xc09991, 1.6)
       }
     }
@@ -517,13 +574,13 @@ function paintAtlas() {
     }
     if (n === 8) {
       bamboo(17, 9, 0.89)
-      bamboo(225, 126, 0.57, -1)
+
       waves(11, 2, 0x9cafaa, 3)
     }
     if (n === 9) {
       laid(15, 0.76, () => bamboo(31, 15, 1.5))
       laid(19, 0.69, () => bamboo(183, 19, 1.03, -1))
-      laid(153, 0.65, () => bamboo(205, 153, 0.79, -1))
+
       for (const y of [12, 23]) waves(y, 2, 0x9aaea7, 4)
     }
     if (n === 10) {
@@ -563,21 +620,18 @@ function paintAtlas() {
       waves(11, 2, 0xcf906b, 4)
     }
     if (n === 13) {
-      for (let j = -1; j < 17; j++)
-        for (let i = -1; i < 13; i++) {
-          const x = i * 26 + (j % 2) * 13,
-            y = j * 17
-          const p = bez([x - 13, y + 9], [x - 11, y - 9], [x + 8, y - 14], [x + 13, y + 9], 19)
-          line(p, j % 3 === 0 ? 0x9e896a : 0x7a7d72, 1.12)
-          line(bez([x - 9, y + 8], [x - 7, y - 3], [x + 5, y - 5], [x + 8, y + 6]), 0x435b61, 0.83)
+      // Couched bronze fibres are confined to the bound margins. Matte
+      // indigo shows through between the four deliberately spaced voussoirs.
+      for (const y of [12, 26, 208, 221]) {
+        for (let i = -1; i < 10; i++) {
+          const x = i * 31 + (y % 13) * 1.9
+          line(bez([x - 15, y], [x - 12, y + 14], [x + 6, y + 16], [x + 16, y], 22), 0xa18a66, 1.15, 0.81)
+          line(bez([x - 10, y], [x - 7, y + 8], [x + 3, y + 10], [x + 10, y + 1], 18), 0x87938d, 0.72, 0.72)
         }
+      }
     }
     if (n === 14) {
-      for (const [x, y, s] of [
-        [128, 125, 2.15],
-        [31, 32, 0.49],
-        [219, 220, 0.55],
-      ]) {
+      for (const [x, y, s] of [[128, 141, 1.53]]) {
         ellipse(x, y, 36 * s, 37 * s, 0.25, 0x91433d, bronze)
         ellipse(x, y, 33 * s, 34 * s, 0.25, 0x693e42, 0xae8d64)
         carp(x, y + 10 * s, 0.78 * s)
@@ -595,6 +649,7 @@ function paintAtlas() {
   tex.name = '千灯四艺 · 玉兰、荷瓣、墨竹与双鱼分裁织样'
   tex.colorSpace = T.SRGBColorSpace
   tex.minFilter = T.LinearMipmapLinearFilter
+  tex.anisotropy = 8
   tex.magFilter = T.LinearFilter
   tex.generateMipmaps = true
   tex.needsUpdate = true
@@ -602,7 +657,8 @@ function paintAtlas() {
   // baking specular highlights into the painted flowers. Keep the glTF map
   // linear so changing lights and grazing angles reveal the embroidered areas.
   const edgeSize = size / 2,
-    normals = new Uint8Array(edgeSize * edgeSize * 4)
+    normals = new Uint8Array(edgeSize * edgeSize * 4),
+    gloss = new Uint8Array(normals.length)
   for (let y = 0; y < edgeSize; y++)
     for (let x = 0; x < edgeSize; x++) {
       const sx = 2 * x,
@@ -619,27 +675,46 @@ function paintAtlas() {
       normals[idx + 1] = Math.round(127.5 * (1 + ny * inv))
       normals[idx + 2] = Math.round(127.5 * (1 + inv))
       normals[idx + 3] = 255
+      const cell = 4 * Math.floor(sy / side) + Math.floor(sx / side)
+      const finish = [
+        0.56, 0.62, 0.49, 0.47, 0.72, 0.59, 0.56, 0.52, 0.76, 0.73, 0.62, 0.58, 0.73, 0.79, 0.64, 0.63,
+      ][cell]
+      const stitched = Math.max(0, (relief[sy * size + sx] - 97) / 100)
+      const lustre = 0.033 * Math.cos(sx * 0.39 - sy * 0.11) + 0.019 * Math.cos(sy * 0.61)
+      gloss[idx] = 255
+      gloss[idx + 1] = Math.round(255 * Math.max(0.27, finish - 0.2 * stitched + lustre))
+      gloss[idx + 2] = 0
+      gloss[idx + 3] = 255
     }
   const normal = new T.DataTexture(normals, edgeSize, edgeSize, T.RGBAFormat)
   normal.name = '妆花线迹经纬起伏'
   normal.minFilter = T.LinearMipmapLinearFilter
+  normal.anisotropy = 4
   normal.magFilter = T.LinearFilter
   normal.generateMipmaps = true
   normal.needsUpdate = true
-  return { tex, normal }
+  const roughness = new T.DataTexture(gloss, edgeSize, edgeSize, T.RGBAFormat)
+  roughness.name = '绢光 · 缂丝、罗与盘金线'
+  roughness.minFilter = T.LinearMipmapLinearFilter
+  roughness.magFilter = T.LinearFilter
+  roughness.generateMipmaps = true
+  roughness.needsUpdate = true
+  return { tex, normal, roughness }
 }
-export function signatureMaterial() {
-  if (material) return material
-  const { tex, normal } = paintAtlas()
-  material = new T.MeshStandardMaterial({
+export function signatureMaterial(pattern = '') {
+  if (materials.has(pattern)) return materials.get(pattern)
+  const { tex, normal, roughness } = paintAtlas(pattern)
+  const material = new T.MeshStandardMaterial({
     name: '分裁织锦与绣线',
     map: tex,
     normalMap: normal,
-    normalScale: new T.Vector2(0.22, 0.22),
+    normalScale: new T.Vector2(0.32, 0.32),
     vertexColors: true,
-    roughness: 0.57,
-    metalness: 0.028,
+    roughness: 0.94,
+    roughnessMap: roughness,
+    metalness: 0,
     side: T.DoubleSide,
   })
+  materials.set(pattern, material)
   return material
 }

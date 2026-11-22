@@ -40,15 +40,40 @@ void main(){
  gl_FragColor=vec4(vec3(1.-clamp(result*.133,0.,.53)),1.);
 }`
 const finish = `
-varying vec2 st;uniform sampler2D frame,glow,contactMap,airGlow;uniform float day;uniform vec2 pixel;
+varying vec2 st;uniform sampler2D frame,glow,contactMap,airGlow,depthMap;
+uniform float day;uniform vec2 pixel,clipZ,focusLens;
 ${finite}
+float depthAt(vec2 at){
+  float z=texture2D(depthMap,at).r;return clipZ.x*clipZ.y/(clipZ.y-z*(clipZ.y-clipZ.x));
+}
+// A close visitor looks past the actor onto much more distant windows.
+// Gather in linear light and reject foreground samples so bright lantern
+// discs cannot bleed through the sitter, thin hair or the strings.
+vec3 defocus(vec3 sharp){
+ if(focusLens.y<.0001)return sharp;
+ float depth=depthAt(st);
+ float coc=focusLens.y*max(0.,1.-(focusLens.x+.25)/max(depth,.1));
+ if(coc<pixel.y*.7)return sharp;
+ vec2 aperture=vec2(pixel.x/pixel.y,1.)*coc;
+ vec3 sum=sharp;float weight=1.;
+ for(int i=0;i<16;i++){
+   float seq=float(i)+.5;
+   vec2 tap=clamp(st+aperture*sqrt(seq/16.)*vec2(cos(seq*2.39996),sin(seq*2.39996)),.001,.999);
+   float d=depthAt(tap);
+   float allowed=smoothstep(focusLens.x+.16,focusLens.x+.65,d);
+   vec3 v=safeSample(texture2D(frame,tap).rgb);
+   float w=allowed*(1.+.13*min(5.,max(v.r,max(v.g,v.b))));
+   sum+=v*w;weight+=w;
+ }
+ return sum/weight;
+}
 void main(){
  vec3 c=safeSample(texture2D(frame,st).rgb);vec3 halo=texture2D(glow,st).rgb;
  vec3 left=texture2D(frame,st-vec2(pixel.x,0.)).rgb,right=texture2D(frame,st+vec2(pixel.x,0.)).rgb;
  vec3 top=texture2D(frame,st-vec2(0.,pixel.y)).rgb,down=texture2D(frame,st+vec2(0.,pixel.y)).rgb;
  vec3 lum=vec3(.24,.64,.12);float horizontal=abs(dot(right-left,lum)),vertical=abs(dot(down-top,lum));
  c=mix(c,horizontal>vertical?(top+down)*.5:(left+right)*.5,smoothstep(.045,.45,max(horizontal,vertical))*.42);
- c=safeSample(c)*texture2D(contactMap,st).r;
+ c=defocus(safeSample(c))*texture2D(contactMap,st).r;
  c+=texture2D(airGlow,st).rgb+halo*mix(.255,.085,day);c*=mix(1.01,.93,day);
  c*=mix(vec3(1.026,1.,.972),vec3(1.03,1.012,.98),day);
  vec2 radius=(st-.5)*vec2(1.,.82);c*=1.-.19*dot(radius,radius);
@@ -105,7 +130,35 @@ export function film(renderer, world, statics, camera, software, common) {
     airGlow: { value: air.texture },
     pixel: hi.uniforms.pixel,
     day: { value: 0 },
+    depthMap: { value: full.depthTexture },
+    clipZ: occ.uniforms.clipZ,
+    focusLens: { value: new T.Vector2(1, 0) },
   })
+  const eyeSpace = new T.Vector3()
+  const context = renderer.getContext()
+  const supported = context.getInternalformatParameter(context.RENDERBUFFER, context.RGBA16F, context.SAMPLES)
+  const nearSamples = Array.from(supported ?? []).filter(n => n >= 2 && n <= 4).sort((a,b) => a-b)[0] ?? 0
+  // The silk fringe and loose hairs cover fractions of a pixel in a close
+  // viewport. Multisample the moving pass there; the distant city keeps its budget.
+  function portraitEdges(active) {
+    const samples = active ? nearSamples : 0
+    if (full.samples === samples) return
+    full.dispose()
+    full.samples = samples
+    full.depthTexture.needsUpdate = true
+  }
+  function focus(point) {
+    const lens = resolve.uniforms.focusLens.value
+    if (!point) { portraitEdges(false); lens.set(1, 0); return }
+    eyeSpace.copy(point).applyMatrix4(camera.matrixWorldInverse)
+    const depth = -eyeSpace.z
+    portraitEdges(depth > .12 && depth < (full.samples ? 4.1 : 3.3))
+    if (depth <= .22 || depth >= 4.4) { lens.set(1, 0); return }
+    const extent = depth * Math.tan(T.MathUtils.degToRad(camera.fov / 2))
+    const centred = Math.max(Math.abs(eyeSpace.x) / (extent * camera.aspect), Math.abs(eyeSpace.y) / extent)
+    const openness = (1 - T.MathUtils.smoothstep(centred, .60, 1.08)) * (1 - T.MathUtils.smoothstep(depth, 2.3, 4.4))
+    lens.set(depth, Math.min(.014, .013 / depth) * openness)
+  }
   let x = 1,
     y = 1,
     filterTime = -1e6
@@ -156,6 +209,7 @@ export function film(renderer, world, statics, camera, software, common) {
   return {
     size,
     draw,
+    focus,
     invalidate() {
       plate.invalidate()
       filterTime = -1e6

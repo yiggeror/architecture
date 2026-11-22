@@ -2,22 +2,23 @@ import { turn, clip, mix, step, between, tint, shade, linear, sample } from './c
 import { legDrape, lowerPoint, bodyRibbon, roundCollar } from './characterGarmentCut.js'
 import { clothUV } from './characterGarmentPaint.js'
 import { costumeUV } from './characterCostumePaint.js'
+import { seatedSilk } from './characterGarmentSeat.js'
 import { fitNeck, wrapCollar } from './characterGarmentCollar.js'
 
 const colours = Object.fromEntries(
   Object.entries({
-    moss: 0x37776c,
-    jade: 0x74a99a,
-    mint: 0xa4c5b4,
+    moss: 0x3c736b,
+    jade: 0x8fb4a8,
+    mint: 0xb8d1bf,
     cream: 0xe9dbc5,
     gold: 0xcdb785,
     bronze: 0xad8d60,
-    darkJade: 0x2c5356,
+    darkJade: 0x214e50,
     whiteJade: 0xc7d4b6,
-    claret: 0x804f68,
+    claret: 0x8e425c,
     plum: 0xa67888,
-    rose: 0xc191a0,
-    blush: 0xe0bdb4,
+    rose: 0xbb7c80,
+    blush: 0xf1c5b0,
     frost: 0xc7d3cc,
     ink: 0x344657,
     slate: 0x577382,
@@ -53,11 +54,11 @@ const designs = {
     cut: { top: 1.014, stop: 0.138, sleeve: 0.0135, bolt: 1 },
     body: (c, th, y) =>
       tint(
-        tint(c.inner, colours.blush, 0.28),
+        tint(c.inner, colours.rose, 0.38),
         colours.rose,
         0.78 * step(0.58, 1.3, Math.abs(Math.sin(th)) * 1.4) * step(1.18, 1.3, y)
       ),
-    sleeve: (c) => tint(c.inner, colours.blush, 0.4),
+    sleeve: () => tint(colours.plum, colours.blush, 0.56),
   },
   64: {
     key: 'scholar',
@@ -99,8 +100,11 @@ function surface(a, y, theta, offset = 0, cut = 'straight') {
   }
   const d = 1 - step(0.3, 0.94, y),
     wave = Math.cos(7 * theta + 0.4 * y + a.phase)
-  const flare = { silk: 0.06, lute: 0.079, scholar: 0.027, jacket: 0.018, straight: 0 }[cut] ?? 0
-  const sway = (flare + 0.0055 * wave) * d
+  const flare = { silk: 0.084, lute: 0.079, scholar: 0.031, jacket: 0.018, straight: 0 }[cut] ?? 0
+  const phi = theta + 0.16 * Math.sin(2.4 * y + theta)
+  const fan = Math.sin(8 * phi + a.phase + 0.83 * y)
+  const folded = (0.012 * fan + 0.004 * Math.sin(16 * phi + 0.45)) * (1 - step(0.83, 1.15, y))
+  const sway = (flare + 0.008 * wave) * d + folded
   p[0] += Math.sin(theta) * sway * a.h
   p[2] += Math.cos(theta) * sway * 0.69 * a.h
   return {
@@ -135,8 +139,8 @@ function panel(
 // surface at its own offset; its width and colour stay legible on the reverse.
 function trim(a, shape, edge, width, dye, { height = 25, double = true, mirror = false } = {}) {
   a.satin.patch(
-    4,
-    height,
+    3,
+    Math.ceil(height * 0.73),
     (u, v) => {
       const local =
         edge === 'left'
@@ -350,7 +354,7 @@ function pipedSleeve(a, side, sign, t1, t2, cell, ease, dye) {
   function f(u, v) {
     const phi = u * turn,
       t = mix(t1, t2, v),
-      p = a.sleeveSection(a, side, sign, t, phi, ease, 0.003)
+      p = a.sleeveSection(a, side, sign, t, phi, Math.max(ease, a.spec.sleeve) + 0.002, 0.0048)
     return { p, w: a.armWeights(side, t), theta: Math.atan2(p[0], p[2]) }
   }
   panel(a, f, cell, { nu: 26, nv: 6, flip: sign < 0 })
@@ -386,23 +390,18 @@ function silkKnot(a, theta, level, length, ground, style) {
   }
   button(a, surface(a, level, theta, 0.042), 0.009, colours.gold, 'oval')
 }
-function fastening(a, y, reach, ground) {
+function fastening(a, y, reach, ground, center = 0) {
   for (const sg of [-1, 1])
     for (const arc of [-1, 1]) {
       a.satin.patch(4, 14, (u, v) => {
-        const th = sg * (0.012 + v * reach),
+        const th = center + sg * (0.012 + v * reach),
           angle = u * turn,
           height = 0.0036 * Math.sin(Math.PI * v) * arc + 0.0014 * Math.cos(angle)
-        const d = surface(a, y + height, th, 0.04 + 0.0014 * Math.sin(angle))
-        return [
-          d.p,
-          d.w,
-          shade(ground, 0.86 + 0.14 * Math.cos(angle - 0.6)),
-          clothUV(4, v, 0.22 + 0.53 * u),
-        ]
+        const d = surface(a, y + height, th, 0.0185 + 0.0014 * Math.sin(angle))
+        return [d.p, d.w, shade(ground, 0.86 + 0.14 * Math.cos(angle - 0.6)), clothUV(4, v, 0.22 + 0.53 * u)]
       })
     }
-  button(a, surface(a, y, 0, 0.042), 0.0056, colours.bronze, 'oval')
+  button(a, surface(a, y, center, 0.02), 0.0056, colours.bronze, 'oval')
 }
 
 function hangingJade(a, theta, waistY, length, style, bright) {
@@ -427,7 +426,7 @@ function hangingJade(a, theta, waistY, length, style, bright) {
     th = d.theta,
     tx = Math.cos(th),
     tz = -Math.sin(th)
-  a.satin.patch(28, 8, (u, v) => {
+  a.satin.patch(22, 6, (u, v) => {
     const ph = u * turn,
       c = Math.cos(ph),
       s = Math.sin(ph),
@@ -487,15 +486,18 @@ function merchantJacket(a) {
         const front = 0.08,
           nominal = rear ? mix(Math.PI / 2, Math.PI, u) : mix(front, Math.PI / 2, u)
         const hem = rear
-          ? 0.762 + 0.117 * (1 - u) ** 1.5
-          : 0.769 + 0.116 * step(0.3, 0.98, u) + 0.014 * Math.cos(3 * Math.PI * u)
+          ? 0.715 + 0.144 * (1 - u) ** 1.5
+          : 0.711 + 0.147 * step(0.3, 0.98, u) + 0.014 * Math.cos(3 * Math.PI * u)
         const y = mix(hem, merchantNeckline(nominal), v)
         const armOpening = 0.49 * step(1.156, 1.206, y) * (1 - step(1.328, 1.361, y))
+        const crossed = 1 - step(0.995, 1.295, y)
+        const overlap = sg > 0 ? front - 0.79 * crossed + 0.16 * step(0.93, 0.72, y) : front + 0.27 * crossed
         const th =
-          sg * (rear ? mix(Math.PI / 2 + armOpening, Math.PI, u) : mix(front, Math.PI / 2 - armOpening, u))
+          sg * (rear ? mix(Math.PI / 2 + armOpening, Math.PI, u) : mix(overlap, Math.PI / 2 - armOpening, u))
         const room =
-          0.0115 +
-          0.021 * (1 - step(1.04, 1.27, y)) +
+          0.009 +
+          0.014 * (1 - step(0.98, 1.21, y)) +
+          (sg > 0 && !rear ? 0.005 * (1 - u) * crossed : 0) +
           0.0018 * Math.sin(3 * th + v) * (1 - step(1.12, 1.27, y))
         const d = y > 1.335 ? a.neckSurface(y, th, room) : surface(a, y, th, room, 'silk')
         const seam = rear ? 1 - u : u
@@ -518,31 +520,11 @@ function merchantJacket(a) {
       trim(a, f, 'top', 0.015, colours.darkJade, { height: 35, double: true, mirror: sg > 0 })
       trim(a, f, 'bottom', 0.031, rear ? colours.moss : colours.gold, { height: 22 })
       if (!rear) {
-        trim(a, f, 'left', 0.039, colours.jade, { height: 27 })
+        trim(a, f, 'left', sg > 0 ? 0.11 : 0.043, sg > 0 ? colours.moss : colours.jade, { height: 27 })
         backedHem(a, f, 'left')
       }
     }
-  // A folded silk binding is stitched into the same armhole as the pale
-  // undersleeve. Its upper and lower edges move with the fitted shoulder seam.
-  for (const [side, sg] of [
-    ['l', 1],
-    ['r', -1],
-  ]) {
-    a.satin.patch(
-      44,
-      4,
-      (u, v) => {
-        const d = attachment(a, side, sg, 0.017 + 0.21 * v, u * turn, 0.14, 0.006)
-        return [
-          d.p,
-          d.w,
-          v > 0.79 ? colours.moss : tint(colours.moss, colours.jade, 0.25),
-          clothUV(4, u * 3, 0.12 + 0.74 * v),
-        ]
-      },
-      sg < 0
-    )
-  }
+
 }
 function silkMerchant(a) {
   const c = colours
@@ -578,14 +560,39 @@ function silkMerchant(a) {
   }
   wrapCollar(a, a.neckSurface, c, 'silk', merchantNeckline)
   merchantJacket(a)
-  band(a, 1.005, 0.052, 3, 0.045, -0.009)
-  fastening(a, 1.157, 0.239, c.moss)
-  fastening(a, 1.101, 0.222, c.moss)
+  band(a, 1.005, 0.047, 3, 0.0315, -0.014)
+  fastening(a, 1.176, 0.157, c.moss, -0.204)
+  fastening(a, 1.09, 0.151, c.moss, -0.54)
   for (const [side, s] of [
     ['l', 1],
     ['r', -1],
   ])
     pipedSleeve(a, side, s, 1.69, side === 'l' ? 1.83 : 1.91, 1, 0.008, c.gold)
+  for (const [side, sg] of [
+    ['l', 1],
+    ['r', -1],
+  ]) {
+    const overSleeve = (u, v) => {
+      const phi = u * turn,
+        rear = 0.5 - 0.5 * Math.sin(phi)
+      const end = 1.02 + 0.35 * rear + 0.07 * Math.cos(phi + 0.3)
+      if (v < 0.14) return attachment(a, side, sg, v / 0.14, phi, 0.15, 0.008)
+      const t = mix(0.15, end, (v - 0.14) / 0.86)
+      const opening = 0.008 + 0.021 * v * v
+      const p = a.sleeveSection(a, side, sg, t, phi, opening, 0.005)
+      const hanging = v ** 1.7 * (0.14 + 0.86 * rear)
+      p[1] -= a.h * (side === 'r' ? 0.058 : 0.029) * hanging
+      p[2] -= a.h * (side === 'l' ? 0.068 : 0.024) * hanging
+      return { p, w: a.armWeights(side, t), theta: Math.atan2(p[0], p[2]) }
+    }
+    panel(a, overSleeve, 1, {
+      nu: 20,
+      nv: 14,
+      flip: sg < 0,
+      uv: (u, v) => [0.25 + 0.53 * u, 0.36 + 0.55 * (1 - v)],
+    })
+    trim(a, overSleeve, 'top', 0.067, c.moss, { height: 25, double: true })
+  }
   hangingJade(a, -0.74, 0.99, 0.204, 'silk', true)
   silkKnot(a, -0.73, 1.002, 0.149, c.moss, 'silk')
 }
@@ -624,9 +631,9 @@ function lutePibo(a) {
     [-0.083, 1.301, -0.142, 0.013, 0.04, -0.006, 'back'],
     [0.012, 1.274, -0.153, 0.005, 0.043, 0.001, 'back'],
     [0.102, 1.301, -0.139, -0.01, 0.038, -0.004, 'back'],
-    [0.165, 1.342, -0.098, -0.013, 0.03, -0.015, 'back'],
-    [0.209, 1.306, -0.071, 0.008, 0.031, -0.025, 'lclav'],
-    [0.233, 1.193, -0.031, 0.019, 0.048, -0.01, 'lclav'],
+    [0.153, 1.326, -0.095, -0.018, 0.023, -0.015, 'back'],
+    [0.186, 1.303, -0.078, 0.004, 0.019, -0.017, 'lclav'],
+    [0.197, 1.195, -0.065, 0.01, 0.029, -0.02, 'lclav'],
     [0.211, 1.039, -0.082, 0.03, 0.044, -0.01, 'ribs'],
     [0.181, 0.888, -0.128, 0.036, 0.029, -0.017, 'lhip'],
     [0.198, 0.761, -0.153, 0.04, 0.011, -0.006, 'lhip'],
@@ -640,7 +647,7 @@ function lutePibo(a) {
       w = balanced(
         { chest: 0.36, [side + 'Clavicle']: 0.64 },
         { [side + 'UpperArm']: 0.76, [side + 'Clavicle']: 0.24 },
-        step(1.34, 1.18, y) * 0.56
+        step(1.34, 1.18, y) * 0.12
       )
     }
     return {
@@ -649,6 +656,21 @@ function lutePibo(a) {
       w,
     }
   })
+  if (a.seatSurface) {
+    const last = prepared.length - 1
+    for (const [index, theta, t, span] of [
+      [last - 2, 1.99, 0.16, 0.23],
+      [last - 1, 1.63, 0.32, 0.23],
+      [last, 1.44, 0.51, 0.21],
+      [0, -1.25, 0.55, 0.19],
+      [1, -1.16, 0.34, 0.22],
+      [2, -1.06, 0.18, 0.21],
+    ]) {
+      const mid = a.seatSurface(theta, t, 0.025),
+        edge = a.seatSurface(theta + span, t, 0.026)
+      prepared[index] = { p: mid.p, w: mid.w, width: edge.p.map((x, i) => x - mid.p[i]) }
+    }
+  }
   const f = (u, v) => {
     const f0 = v * (stops.length - 1),
       i = Math.min(stops.length - 2, Math.floor(f0)),
@@ -660,20 +682,22 @@ function lutePibo(a) {
     const p = cat(s0.p, s1.p, s2.p, s3.p, k),
       wd = cat(s0.width, s1.width, s2.width, s3.width, k),
       across = 2 * u - 1
-    const curl = 0.0038 * Math.cos(u * Math.PI * 4 + 0.42 * v) * (1 - Math.abs(across) * 0.6)
+    const curl =
+      0.007 * Math.cos(u * Math.PI * 3 + 3.4 * v) +
+      0.003 * Math.sin(8 * v + u * 4) * (1 - Math.abs(across) * 0.6)
     const out = [p[0] + wd[0] * across, p[1] + wd[1] * across, p[2] + wd[2] * across - curl * h]
     return { p: out, w: balanced(s1.w, s2.w, k), theta: Math.atan2(p[0], p[2]) }
   }
-  for (let j = 0; j < 12; j++) {
-    const repeat = (u, v) => f(u, (v + j) / 12)
+  for (let j = 0; j < 6; j++) {
+    const repeat = (u, v) => f(u, (v + j) / 6)
     panel(a, repeat, 6, {
-      nu: 10,
-      nv: 7,
+      nu: 7,
+      nv: 11,
       uv: (u, v) => [0.04 + 0.92 * u, 0.13 + 0.71 * v],
       shadeAt: (u, v) => 0.97 + 0.035 * Math.cos(u * turn + v * 0.2),
     })
   }
-  for (const edge of ['left', 'right']) trim(a, f, edge, 0.055, colours.claret, { height: 73 })
+  for (const edge of ['left', 'right']) trim(a, f, edge, 0.041, colours.rose, { height: 73 })
   for (const edge of ['top', 'bottom']) trim(a, f, edge, 0.013, colours.blush, { height: 15 })
 }
 function lutePlayer(a) {
@@ -682,17 +706,58 @@ function lutePlayer(a) {
       -Math.PI / 8 + (k * Math.PI) / 4,
       -Math.PI / 8 + ((k + 1) * Math.PI) / 4,
     ])
-  radialPanels(a, {
-    top: 1.049,
-    hem: (th, u) => 0.138 + 0.029 * (1 - Math.sin(u * Math.PI)) + 0.008 * Math.cos(3 * th),
-    cut: 'lute',
-    cell: 5,
-    other: 4,
-    sections,
-    pleats: 0.0049,
-    trimColor: c.blush,
-    trimWidth: 0.016,
-  })
+  if (a.seated) {
+    const draped = (a.seatSurface = seatedSilk(a))
+    for (const [i, [lo, hi]] of [
+      [-1.13, 1.11],
+      [1.11, 3.12],
+      [3.12, turn - 1.13],
+    ].entries()) {
+      const f = (u, v) => draped(mix(lo, hi, u), 1 - v)
+      panel(a, f, i === 0 ? 5 : 4, {
+        nu: i === 0 ? 30 : 22,
+        nv: 31,
+        uv: (u, v) => [i === 2 ? 1 - u : u, v],
+        shadeAt: (u, v) => 0.9 + 0.063 * v + 0.045 * Math.sin(u * 4 + i),
+      })
+      trim(a, f, 'bottom', 0.018, c.blush, { height: 29 })
+      backedHem(a, f)
+    }
+    // A single bias-cut overpanel is caught under the belt on her right,
+    // spreads across the sinistral knee, and curls back at the selvage. Its
+    // open diagonal reveals the deeper mulberry silk beneath the pale gore.
+    const wrap = (u, v) => {
+      const theta = mix(-1.66, 1.74, u)
+      const drop = 0.29 + 0.64 * step(0.17, 0.92, u) + 0.034 * Math.sin(6 * u + 0.3)
+      const t = mix(drop, 0.028, v)
+      const selvedge = 0.013 + 0.005 * (1 - v) ** 3 + 0.0025 * Math.sin(4 * u + 2 * v)
+      return draped(theta, t, selvedge)
+    }
+    panel(a, wrap, 4, {
+      nu: 29,
+      nv: 17,
+      uv: (u, v) => [0.39 + 0.6 * u, 0.32 + 0.63 * v],
+      shadeAt: (u, v) => 1.1 + 0.05 * Math.sin(3 * u - 2 * v),
+    })
+    a.satin.patch(3, 41, (u, v) => {
+      const drop = 0.29 + 0.64 * step(0.17, 0.92, v) + 0.034 * Math.sin(6 * v + 0.3)
+      const th = mix(-1.66, 1.74, v),
+        t = mix(drop, 0.028, 0.022 * u)
+      const d = draped(th, t, 0.021 + 0.0025 * Math.sin(4 * v))
+      return [d.p, d.w, tint(c.blush, c.cream, 0.38), clothUV(1, v * 3.5, 0.2 + 0.59 * u)]
+    })
+  } else
+    radialPanels(a, {
+      top: 1.049,
+      hem: (th, u) => 0.138 + 0.029 * (1 - Math.sin(u * Math.PI)) + 0.008 * Math.cos(3 * th),
+      cut: 'lute',
+      cell: 5,
+      other: 4,
+      sections,
+      pleats: 0.0049,
+      trimColor: c.blush,
+      trimWidth: 0.016,
+    })
   // A scalloped short jacket leaves the high belt and the long gored skirt in
   // one line from the raised hand to the floor.
   const fronts = [-1, 1].map((s) =>
@@ -727,7 +792,7 @@ function lutePlayer(a) {
   panel(a, yoke, 7, { nu: 20, nv: 4, uv: (u, v) => [u, 0.24 + 0.46 * v] })
   trim(a, bodice, 'top', 0.016, c.cream, { height: 24, double: false })
   band(a, 1.041, 0.047, 7, 0.026, 0.009)
-  shoulderCaps(a, 4, { end: 0.536, ease: 0.015, dye: c.cream, points: 3 })
+  shoulderCaps(a, 4, { end: 0.38, ease: 0.0085, dye: c.cream, points: 2 })
   for (const [side, s] of [
     ['l', 1],
     ['r', -1],
@@ -748,9 +813,13 @@ function scholarSleeves(a) {
         start = 0.13 + 0.11 * (1 - c)
       if (v < 0.14) return attachment(a, side, sg, v / 0.14, phi, start, 0.017)
       const t = mix(start, end, (v - 0.14) / 0.86),
-        ease = 0.017 + 0.033 * step(0.26, 1.19, t)
+        ease = 0.016 + 0.018 * step(0.26, 1.19, t)
       const p = a.sleeveSection(a, side, sg, t, phi, ease, 0.003)
-      p[1] -= 0.04 * a.h * step(0.55, 1.33, t) * Math.max(0, -c)
+      const width = step(0.3, 1.25, t)
+      const hanging = Math.max(0, -Math.sin(phi + 0.31 * sg)) ** 1.5
+      p[1] -= a.h * width * ((side === 'l' ? 0.105 : 0.039) * hanging + 0.014)
+      p[2] -= a.h * width * (side === 'r' ? 0.108 : 0.024) * hanging
+      p[0] += sg * a.h * 0.015 * width * Math.cos(3 * phi - 0.9 * t)
       return { p, w: a.armWeights(side, t), theta: Math.atan2(p[0], p[2]) }
     }
     panel(a, f, 8, { nu: 28, nv: 17, flip: sg < 0, shadeAt: (u, v) => 0.96 + 0.04 * Math.cos(u * turn) })
@@ -772,7 +841,7 @@ function scholar(a) {
     trimColor: c.frost,
     trimWidth: 0.019,
   })
-  const cutFront = (u) => 0.143 + 0.062 * (1 - u) + 0.017 * Math.sin(u * Math.PI)
+  const cutFront = (u) => 0.125 + 0.112 * (1 - u) ** 1.6 + 0.025 * Math.sin(u * Math.PI)
   const fronts = [-1, 1].map((s) =>
     upperPanel(a, {
       sign: s,
@@ -788,7 +857,7 @@ function scholar(a) {
   )
   const back = upperPanel(a, {
     back: true,
-    hem: (u) => 0.12 + 0.062 * Math.abs(2 * u - 1) ** 2,
+    hem: (u) => 0.104 + 0.066 * Math.abs(2 * u - 1) ** 2,
     cell: 9,
     style: 'scholar',
     long: true,
@@ -920,7 +989,18 @@ function drummer(a) {
     trimColor: c.seal,
   })
   ridingOverlap(a)
-  shoulderCaps(a, 13, { end: 0.52, ease: 0.017, dye: c.bronze, points: 4 })
+  // The collar band splits over the jugular notch. The two turned-under ends
+  // continue into the diagonal overlap instead of leaving an open crew neck.
+  const stand = (u, v) => {
+    const th = mix(0.09, turn - 0.1, u)
+    const front = Math.max(0, Math.cos(th)) ** 3
+    const low = 1.391 - 0.026 * front
+    const y = mix(low, 1.423 - 0.035 * front, v)
+    return a.neckSurface(y, th, 0.004 + 0.0017 * Math.sin(v * Math.PI))
+  }
+  panel(a, stand, 13, { nu: 36, nv: 5, uv: (u, v) => [u, 0.18 + 0.24 * v] })
+  trim(a, stand, 'top', 0.13, c.bronze, { height: 35, double: false })
+  shoulderCaps(a, 13, { end: 0.39, ease: 0.005, dye: c.bronze, points: 2 })
   band(a, 0.982, 0.1, 13, 0.031, 0.017)
   const waistEmblem = (u, v) => {
     const th = (u - 0.5) * 0.68,
@@ -929,10 +1009,27 @@ function drummer(a) {
   }
   panel(a, waistEmblem, 14, { nu: 14, nv: 9 })
   for (const th of [-0.47, 0.47, -0.9, 0.9]) button(a, surface(a, 0.98, th, 0.039), 0.0077, c.bronze)
+  silkKnot(a, -1.16, 0.98, 0.218, c.seal, 'jacket')
+  for (const [th, len] of [
+    [1.43, 0.156],
+    [1.69, 0.103],
+    [-1.47, 0.18],
+  ]) {
+    const strap = (u, v) =>
+      surface(
+        a,
+        0.97 - len * v + 0.007 * v ** 7 * Math.abs(2 * u - 1),
+        th + (u - 0.5) * 0.105 + 0.052 * Math.sin(2.9 * v),
+        0.042 + 0.006 * Math.sin(v * Math.PI),
+        'jacket'
+      )
+    panel(a, strap, 15, { nu: 4, nv: 10, uv: (u, v) => [0.3 + 0.4 * u, 0.2 + 0.62 * v] })
+    button(a, strap(0.5, 0.05), 0.0047, c.bronze)
+  }
   bracers(a)
 }
 export function sewSignature(a, neckStart) {
-  if (a.signature.key === 'silk' || a.signature.key === 'lute') a.neckSurface = fitNeck(a, neckStart)
+  if (['silk', 'lute', 'drummer'].includes(a.signature.key)) a.neckSurface = fitNeck(a, neckStart)
   const build = { silk: silkMerchant, lute: lutePlayer, scholar, drummer }
   build[a.signature.key](a)
 }

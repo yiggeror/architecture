@@ -77,15 +77,17 @@ export async function exportCharacterGLB(profile, job = profile.job, options = {
       job,
     }
     const action = bakeAction(figure, state, options.startTime ?? 0)
-    // A walking loop is much shorter than a natural interval between blinks.
-    // Give animators a separate one-shot they can play while any action runs.
+    // A glTF weights key contains every target on its mesh. The standalone
+    // blink closes only the named lids, with every other expression at rest.
     const eyelids = figure.group.getObjectByName('上下眼睑')
+    const blinkTimes = [0, 0.032, 0.068, 0.087, 0.105, 0.142, 0.185, 0.23]
+    const closure = [0, 0.19, 0.82, 1, 0.97, 0.61, 0.16, 0]
+    const count = eyelids.morphTargetInfluences.length
+    const blinkIndex = eyelids.morphTargetDictionary['闭眼']
+    const weights = new Float32Array(blinkTimes.length * count)
+    for (const [i, amount] of closure.entries()) weights[i * count + blinkIndex] = amount
     const blink = new T.AnimationClip('眨眼', 0.23, [
-      new T.NumberKeyframeTrack(
-        eyelids.uuid + '.morphTargetInfluences',
-        [0, 0.032, 0.068, 0.087, 0.105, 0.142, 0.185, 0.23],
-        [0, 0.19, 0.82, 1, 0.97, 0.61, 0.16, 0],
-      ),
+      new T.NumberKeyframeTrack(eyelids.uuid + '.morphTargetInfluences', blinkTimes, weights),
     ])
     const scene = new T.Scene()
     scene.name = profile.name

@@ -21,11 +21,22 @@ test('all study sitters have measured facial landmarks, a surfaced mouth and com
     jaws.push(mm('gonionL', 'gonionR'))
     const aperture = Math.abs(m.exocanthionL.x - m.endocanthionL.x)
     const gap = m.endocanthionL.x - m.endocanthionR.x
-    assert.ok(gap / aperture > 0.96 && gap / aperture < 1.16, p.name)
+    const gapRatio = gap / aperture
+    // The two women and the scholar have a continuous longer almond sweep;
+    // the mature boatman retains his shorter fissure and wider nasal root.
+    const bounds = {
+      silk: [0.82, 0.92],
+      lute: [0.9, 1.02],
+      scholar: [0.83, 0.94],
+      drummer: [0.92, 1.02],
+      market: [0.95, 1.12],
+      boatman: [1.03, 1.16],
+    }[p.faceFamily]
+    assert.ok(gapRatio > bounds[0] && gapRatio < bounds[1], p.name)
     if (p.id === 47 || p.id === 9) {
       const orbit = faceAnatomy(p).orbit(1, 0)
-      assert.ok(gap > 0.028 && gap < 0.032 && aperture > 0.03 && aperture < 0.034, p.name)
-      assert.ok(orbit.top - orbit.bottom > 0.0088 && orbit.top - orbit.bottom < 0.0106, p.name)
+      assert.ok(gap > 0.028 && gap < 0.032 && aperture > 0.033 && aperture < 0.036, p.name)
+      assert.ok(orbit.top - orbit.bottom > 0.01 && orbit.top - orbit.bottom < 0.012, p.name)
     }
     assert.ok(mm('nasion', 'gnathion') > 98 && mm('nasion', 'gnathion') < 125, p.name)
     assert.ok(m.pronasale.z - m.subnasale.z > 0.011 && m.pronasale.z - m.subnasale.z < 0.024, p.name)
@@ -39,6 +50,11 @@ test('all study sitters have measured facial landmarks, a surfaced mouth and com
     for (const mesh of g.children) {
       const a = mesh.geometry.attributes
       assert.ok(a.position.count === a.uv.count && a.normal.count === a.uv.count)
+      if (a.color)
+        assert.ok(
+          a.color.array.every((c) => Number.isFinite(c) && c >= 0 && c <= 1),
+          p.name + ' ' + mesh.name + ' glTF vertex colors'
+        )
       assert.ok(mesh.geometry.boundingSphere.radius > 0)
       if (mesh.material.userData.skin) {
         const t = new T.Vector3(),
@@ -77,6 +93,26 @@ test('both real eyelids cover each moving iris at closure and open again', () =>
     assert.equal(lids.morphTargetDictionary['闭眼'], 0)
     g.updateMatrixWorld()
     for (const s of [-1, 1]) {
+      iris.morphTargetInfluences.fill(0)
+      lids.morphTargetInfluences.fill(0)
+      // The superior iris is still present behind the fully open lid.
+      // Locate that rim on the actual moving disc before testing occlusion.
+      const disc = iris.geometry.attributes.position
+      let peakY = -Infinity,
+        peakX = 0
+      for (let i = 0; i < disc.count; i++) {
+        if (Math.sign(disc.getX(i)) === s && disc.getY(i) > peakY) {
+          peakY = disc.getY(i)
+          peakX = disc.getX(i)
+        }
+      }
+      ray.set(eye.set(peakX, peakY - 0.0007, 0.25), forward)
+      const hood = ray.intersectObjects([lids, iris])
+      assert.equal(hood[0]?.object, lids, p.name + ' upper lid overlies the iris')
+      assert.ok(
+        hood.some((hit) => hit.object === iris),
+        p.name + ' superior limbus is present'
+      )
       for (const dx of [-0.65, 0, 0.52])
         for (const dy of [0.2, 0.49, 0.78]) {
           const o = a.orbit(s, dx * 0.48),
@@ -119,6 +155,27 @@ test('both real eyelids cover each moving iris at closure and open again', () =>
     assert.notDeepEqual(iris.morphTargetInfluences, down)
     assert.equal(lids.material.userData.skin, true)
     assert.equal(iris.material.userData.skin, undefined)
+  }
+})
+
+test('the four named performances move cheek and brow while the wet lids still close independently', () => {
+  for (const id of [47, 9, 64, 4]) {
+    const profile = characterProfile(id)
+    const head = buildPortrait(profile),
+      face = head.getObjectByName('面骨、五官与耳廓')
+    const lids = head.getObjectByName('上下眼睑')
+    assert.deepEqual(Object.keys(face.morphTargetDictionary), [id === 4 ? '呼气' : '含笑', '扬眉'])
+    assert.deepEqual(Object.keys(lids.morphTargetDictionary), ['闭眼', '扬眉'])
+    const levels = []
+    for (let i = 0; i < 60; i++) {
+      head.userData.animate(i / 12, 0.3, { job: profile.job, walking: id === 47 || id === 64 })
+      assert.equal(face.morphTargetInfluences[1], lids.morphTargetInfluences[1])
+      levels.push(face.morphTargetInfluences.slice())
+    }
+    for (const k of [0, 1]) assert.ok(new Set(levels.map((row) => row[k])).size > 4)
+    head.userData.animate(0, 0, { job: 'watch' })
+    assert.deepEqual(face.morphTargetInfluences, [0, 0])
+    assert.equal(lids.morphTargetInfluences[1], 0)
   }
 })
 

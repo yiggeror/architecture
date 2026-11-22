@@ -92,6 +92,8 @@
       .trial-form .jaw-label { grid-column: 1 / -1; grid-template-columns: auto minmax(44px,1fr) auto; align-items: center; gap: 9px; }
       #trial-reset { align-self: end; min-height: 29px; color: var(--red); font-size: 12px; }
       #trial-reset:disabled { color: #878d80; cursor: default; }
+      #clay-face { color: var(--teal); border: 1px solid var(--line); padding: 3px 8px; font-size: 12px; }
+      #clay-face[aria-pressed="true"] { color: #f6f3e6; background: #486356; }
       .trial-export { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 3px 8px; padding-top: 5px; border-top: 1px solid var(--line); }
       .trial-export button { display: flex; align-items: center; gap: 6px; min-height: 29px; padding: 0 2px; color: var(--teal); font-size: 12px; }
       .trial-export button span { font-size: 16px; }
@@ -228,7 +230,7 @@
               <label class="jaw-label" for="trial-jaw">脸廓<input id="trial-jaw" type="range" min="-1" max="1" step=".01"><output for="trial-jaw" id="jaw-value"></output></label>
               <label>发式<select id="trial-hair"></select></label><label>衣式<select id="trial-garment"></select></label>
               <label>织纹<select id="trial-pattern"></select></label><button type="button" id="trial-reset" disabled>复原造型</button>
-              <div class="trial-export"><button type="button" id="export-figure"><span aria-hidden="true">↓</span>导出 GLB</button><small id="export-status" role="status"></small></div>
+              <div class="trial-export"><button type="button" id="clay-face" aria-pressed="false">面部灰模</button><button type="button" id="export-figure"><span aria-hidden="true">↓</span>导出 GLB</button><small id="export-status" role="status"></small></div>
             </div>
           </details>
           <div class="settings">

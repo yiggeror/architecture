@@ -4,12 +4,12 @@ import { PortraitMesh, ovoid, point, sweep, tint } from './characterFaceMesh.js'
 
 const tau = Math.PI * 2
 const naturalStyles = { silk: 'loop', lute: 'coil', scholar: 'half', drummer: 'half' }
-const names = { silk: '朝云髻与包鬓', lute: '水纹低髻', scholar: '束发文冠', drummer: '额帛与翻髻' }
+const names = { silk: '玉兰盘云髻', lute: '海棠流水髻', scholar: '青绦束发', drummer: '额帛与翻髻' }
 const dye = {
-  silk: [0x322b32, 0x6a605e],
-  lute: [0x392e2d, 0x6d5c56],
-  scholar: [0x242a33, 0x606268],
-  drummer: [0x352b2a, 0x775f56],
+  silk: [0x191a23, 0x70615f],
+  lute: [0x241c23, 0x7b625d],
+  scholar: [0x161b24, 0x696978],
+  drummer: [0x261e22, 0x6c5956],
 }
 const blend = (a, b, t) => a.map((v, i) => mix(v, b[i], t))
 const shade = (a, k) => a.map((v) => clamp(v * k))
@@ -25,14 +25,15 @@ function fibrePigment() {
     bytes = new Uint8Array(w * h * 4)
   for (let j = 0; j < h; j++)
     for (let i = 0; i < w; i++) {
-      const card = i >= w / 2,
-        u = ((i % (w / 2)) + 0.5) / (w / 2),
+      const edge = i >= w * 0.825,
+        card = i >= w / 2 && !edge,
+        u = edge ? (i / w - 0.825) / 0.175 : card ? (i / w - 0.5) / 0.325 : (i + 0.5) / (w * 0.5),
         v = (j + 0.5) / h
       const wander = 0.33 * Math.sin(6.1 * v + 7.7 * u) + 0.18 * Math.sin(10.5 * v - 4.9 * u)
-      const flow = u * (card ? 116 : 253) + wander
+      const flow = u * (card ? 43 : 327) + wander
       const thread = 0.5 + 0.5 * Math.cos(tau * flow + 0.24 * Math.sin(flow * 0.43))
       const fine = Math.cos(tau * (flow * 1.47 + 0.17 * Math.sin(v * 8 + u * 3)))
-      const shade = 187 + 39 * (thread - 0.5) + 13 * fine + 7 * Math.sin(u * 87 + v * 4) + 7 * thread ** 5
+      const shade = 193 + 31 * (thread - 0.5) + 9 * fine + 11 * Math.sin(u * 87 + v * 4) + 8 * thread ** 5
       const offset = (j * w + i) * 4
       bytes[offset] = shade + 1
       bytes[offset + 1] = shade
@@ -41,10 +42,20 @@ function fibrePigment() {
       if (card) {
         const tip = smooth(0.51, 1, v),
           side = Math.abs(2 * u - 1)
-        const solid = 0.53 - 0.22 * tip + 0.024 * Math.sin(6 * v + u * 11)
+        const solid = 0.55 - 0.32 * tip + 0.024 * Math.sin(6 * v + u * 11)
         const density = 1 - smooth(solid, 1.035, side)
         const split = 0.17 * tip * (0.52 + 0.48 * Math.cos(28 * u + v * 3.2))
         ink = smooth(0.02, 0.19, density - (1 - thread) * 0.79 - split)
+      }
+      if (edge) {
+        const bank = u * 71 + 0.34 * Math.sin(v * 7 + u * 3.4)
+        const strand = 0.5 + 0.5 * Math.cos(tau * bank)
+        const tip =
+          0.21 +
+          0.37 * (0.5 + 0.5 * Math.sin(Math.floor(bank) * 16.378 + 1)) +
+          0.073 * Math.sin(u * 15.6) +
+          0.16 * (1 - strand)
+        ink = smooth(tip - 0.125, tip + 0.09, 1 - v)
       }
       bytes[offset + 3] = Math.round(ink * 255)
     }
@@ -67,8 +78,7 @@ function strandFinish() {
     for (let i = 0; i < w; i++) {
       const u = (i + 0.5) / w,
         v = j / (h - 1),
-        phase =
-          tau * (u + 0.0017 * Math.sin(v * 6.7 + tau * u * 3) + 0.0013 * Math.cos(4.3 * v - tau * u * 5))
+        phase = tau * (u + 0.0017 * Math.sin(v * 6.7 + tau * u * 3) + 0.0013 * Math.cos(4.3 * v - tau * u * 5))
       const groups = phase * 67 + 0.63 * Math.sin(18 * phase + v * 1.7),
         fine = phase * 143 + 0.35 * Math.cos(27 * phase - v * 3.1)
       const sx = 0.195 * Math.sin(groups) + 0.13 * Math.sin(fine) + 0.058 * Math.cos(phase * 197 + v * 3.1)
@@ -144,106 +154,25 @@ function wire(mesh, coords, r, color, n = 16) {
 // The circumference follows the measured head under every section; the hair
 // flows to a different gathering point for each character. The root stays on
 // the same line as the short hairs painted into the portrait's skin atlas.
+function hairline(a, angle) {
+  const th = Math.atan2(Math.sin(angle), Math.cos(angle))
+  const nape = smooth(1.72, 2.54, Math.abs(th))
+  return hairEdge(a, th) - nape * (0.009 + 0.0033 * Math.cos(7 * th) + 0.0018 * Math.sin(13 * th + 0.4))
+}
 function combScalp(h) {
-  const { a, design, hair, metal, dark, light } = h
-  const division = { silk: -0.43, lute: 0.23, scholar: -0.58, drummer: 0.3 }[design]
-  const summit = { silk: 0.0123, lute: 0.0062, scholar: 0.0067, drummer: 0.0069 }[design],
-    skin = tint(a.profile.skin)
-  h.scalp = (theta, t, extra = 0) => {
-    const side = Math.sin(theta),
-      front = Math.max(0, Math.cos(theta))
-    const root = hairEdge(a, theta),
-      y = mix(root, 0.233, t),
-      rise = Math.sin(Math.PI * t)
-    if (t < 0) return hairAt(h, theta, y, extra + 0.00015)
-    let drift, fullness, lift
-    if (design === 'silk') {
-      drift = 0.66 * Math.sin(theta - division) * rise + 0.11 * rise * (1 + 0.42 * side)
-      fullness = 0.0047 + 0.009 * bell(Math.abs(theta) - 0.94, 0.48) + 0.005 * bell(theta + 0.97, 0.49)
-      lift = 0.0085 + 0.0038 * (1 - side)
-    } else if (design === 'lute') {
-      drift = 0.5 * Math.sin(theta - division) * rise + 0.13 * Math.sin(t * tau) * Math.sin(theta + 0.51)
-      fullness =
-        0.0038 + 0.0098 * bell(Math.abs(theta) - 1.24, 0.56) + 0.0032 * Math.sin(t * 9 + 2.2 * theta) ** 2
-      lift = 0.0049 + 0.0022 * front
-    } else if (design === 'scholar') {
-      drift = 0.43 * Math.sin(theta - division) * rise + 0.15 * rise * front
-      fullness = 0.0028 + 0.0024 * bell(theta + 0.5, 0.5)
-      lift = 0.0067
-    } else {
-      drift =
-        0.53 * Math.sin(theta - division) * rise - 0.145 * rise + 0.06 * Math.sin(3 * theta + t * 3) * rise
-      fullness = 0.0037 + 0.0045 * bell(theta - 0.83, 0.67)
-      lift = 0.0069 + 0.0028 * Math.sin(theta + 0.28)
-    }
-    const phi = theta + drift,
-      si = Math.sin(phi),
-      co = Math.cos(phi)
-    let base
-    if (t < 0.075) base = a.point(phi, y)
-    else {
-      const ring = a.dimensions(y)
-      base = [
-        si * ring[0],
-        y,
-        ring[2] + (co >= 0 ? (ring[1] - ring[2]) * co ** 0.9 : (ring[3] - ring[2]) * (-co) ** 0.91),
-      ]
-    }
-    const rhythm =
-      0.91 + 0.1 * Math.sin(theta * 11 + 0.58 * Math.sin(t * 6 + theta)) + 0.043 * Math.cos(theta * 23 + 0.71)
-    const delta = rise ** 0.75 * fullness * rhythm + 0.00022 * (1 - t) + extra * Math.sqrt(Math.max(0, 1 - t))
-    return [
-      base[0] + si * delta,
-      base[1] + mix(lift, summit, smooth(0.62, 0.96, t)) * t + 0.0019 * rise,
-      base[2] + co * delta,
-    ]
-  }
-  const first = hair.pos.length / 3
+  const { a, hair, dark, light } = h
+  // The measured undercap only supports the minute openings at the part.
+  // It sits inside the combed surface except directly above the ears.
   hair.grid(78, 29, (u, t) => {
-    const angle = (u - 0.5) * tau,
-      P = h.scalp(angle, t)
-    const wave =
-      0.32 +
-      0.063 * Math.sin(angle * 14 + 0.85 * Math.sin(5 * t + 0.83 * angle)) +
-      0.036 * Math.cos(angle * 27 + t * 1.9)
-    const sheen = 0.1 * bell(t - 0.55, 0.23) + 0.075 * Math.cos(3 * angle - 0.6)
-    const colour = blend(dark, light, clamp(wave + sheen, 0.07, 0.67))
-    return point(P, [u, t], blend(colour, skin, 0.11 * (1 - smooth(0, 0.022, t))))
+    const th = (u - 0.5) * tau,
+      lower = hairline(a, th),
+      y = mix(lower, 0.233, t)
+    const p = a.point(th, y)
+    p[1] += 0.0064 * t
+    p[0] += 0.00035 * Math.sin(th)
+    p[2] += 0.00035 * Math.cos(th)
+    return point(p, [u, t], blend(dark, light, 0.16 + 0.06 * Math.sin(th * 19)))
   })
-  const top = first + 29 * 79,
-    cap = h.scalp(0, 1)
-  cap[0] = 0
-  cap[2] = a.dimensions(0.233)[2]
-  const crown = hair.vertex(point(cap, [0.5, 1], blend(dark, light, 0.29)))
-  for (let i = 0; i < 78; i++) hair.index.push(top + i, top + i + 1, crown)
-  const strip = (t) => division + (0.12 + 0.045 * Math.sin(Math.PI * t)) * t
-  metal.grid(4, 25, (u, v) => {
-    const t = 0.007 + 0.78 * v,
-      theta = strip(t),
-      span = 0.0075 * (1 - 0.74 * v) * (1 + 0.15 * Math.sin(v * 19))
-    const p = h.scalp(theta + (u - 0.5) * span * 2, t, 0.0004)
-    const skin = shade(tint(a.profile.skin), 0.72)
-    return point(p, [u, v], blend(dark, skin, Math.sin(Math.PI * u) ** 1.5 * (0.57 - 0.27 * v)))
-  })
-  for (const sign of [-1, 1])
-    for (let j = 0; j < 12; j++) {
-      const root = division + sign * (0.039 + j * 0.216 + 0.018 * Math.cos(j * 3.1))
-      const first = 0.01 + 0.019 * (j % 3),
-        last = 0.6 + 0.31 * (0.5 + 0.5 * Math.cos(j * 2.72))
-      hair.grid(4, 19, (u, v) => {
-        const t = mix(first, last, v),
-          taper = envelope(v),
-          halfWidth = 0.03 + 0.02 * (0.5 + 0.5 * Math.sin(j * 4.62))
-        const th =
-          root +
-          (u - 0.5) * 2 * halfWidth * taper +
-          0.029 * sign * (Math.sin(v * Math.PI) + Math.sin(v * tau + j) * 0.4)
-        const ridge = Math.sin(Math.PI * u) * taper
-        const p = h.scalp(th, t, 0.00022 + 0.00105 * ridge)
-        const colour = blend(dark, light, 0.25 + 0.28 * ridge + 0.05 * Math.cos(j * 2.2))
-        return point(p, [th / tau + 0.5 + 0.002 * u, t], colour)
-      })
-    }
 }
 
 // Slice the finished locks at a given height. A forehead ribbon has to rest
@@ -307,331 +236,11 @@ function atLevel(h, angle, y, extra = 0) {
   return [dx * (outer + extra), y, cz + dz * (outer + extra)]
 }
 
-// Draw a brushed panel in the measured scalp coordinates. Its edges lie
-// flush, including the tapered edge which descends across the forehead.
-function wing(h, sections, width, lift, phase = 0) {
-  const curve = new T.CatmullRomCurve3(
-    sections.map(([angle, level]) => new T.Vector3(angle, level, 0)),
-    false,
-    'catmullrom',
-    0.42,
-  )
-  h.hair.grid(10, 36, (u, v) => {
-    const center = curve.getPoint(v),
-      root = hairEdge(h.a, center.x),
-      ends = envelope(v)
-    const t = center.y + ((u - 0.5) * width * 2 * ends) / (0.233 - root)
-    const crown = Math.sin(Math.PI * u) ** 0.78 * ends,
-      angle = center.x + 0.017 * (u - 0.5) * ends
-    const filaments = 0.5 + 0.5 * Math.cos(u * 30 + 0.45 * Math.sin(v * 7 + phase))
-    const p = h.scalp(angle, t, -0.00066 + (lift * crown + 0.0005 * filaments * crown))
-    const colour = blend(
-      h.dark,
-      h.light,
-      0.22 + 0.17 * crown + 0.057 * filaments + 0.035 * Math.sin(5 * v + phase),
-    )
-    return point(p, [u * 0.26 + 0.08 * Math.sin(v * 2) + 0.1 * phase, v], colour)
-  })
-}
-
-// Shallow interrupted comb marks gather the temple hair toward its tie.
-// Most of each ridge is buried in the scalp; individual narrow filaments
-// emerge in the light as the comb changes direction above the ear.
-function brushedSide(h, side) {
-  const low = h.design === 'lute',
-    high = h.design === 'scholar'
-  for (let j = 0; j < 5; j++)
-    h.hair.grid(4, 21, (u, t) => {
-      const theta = side * (1.04 + j * 0.067 + t * (1.25 - 0.09 * j))
-      const gather = low ? 0.085 : high ? 0.36 : 0.25
-      const level =
-        0.105 +
-        0.036 * j +
-        gather * t +
-        0.082 * Math.sin(Math.PI * t) -
-        0.019 * (low ? 2 : 1) * Math.sin(t * tau + j * 0.35)
-      const ridge = Math.sin(Math.PI * u) * envelope(t)
-      const p = h.scalp(
-        theta,
-        level + (u - 0.5) * (0.018 + 0.005 * (j % 2)) * envelope(t),
-        -0.0004 + 0.00106 * ridge,
-      )
-      return point(p, [0.12 * j + 0.09 * u, t], blend(h.dark, h.light, 0.3 + 0.15 * ridge))
-    })
-}
-// Swept locks have a rounded back, a flatter face and narrow ridges following
-// their entire path. The reference vector keeps their wide axis on the head.
-function lock(h, points, width, depth, options = {}) {
-  const steps = options.steps ?? 25,
-    sides = options.sides ?? 12,
-    phase = options.phase ?? 0
-  const curve = new T.CatmullRomCurve3(
-    points.map((p) => new T.Vector3(...p)),
-    false,
-    'centripetal',
-  )
-  const center = new T.Vector3(),
-    tangent = new T.Vector3(),
-    normal = new T.Vector3(),
-    across = new T.Vector3(),
-    pos = new T.Vector3()
-  const outward = options.normal && new T.Vector3(...options.normal)
-  const reference = new T.Vector3(0, 0.148, -0.01)
-  let oldRow = -1
-  h.hair.grid(sides, steps, (u, v, i, j) => {
-    if (oldRow !== j) {
-      oldRow = j
-      curve.getPointAt(v, center)
-      curve.getTangentAt(v, tangent)
-      if (outward) normal.copy(outward)
-      else normal.copy(center).sub(reference)
-      normal.addScaledVector(tangent, -normal.dot(tangent))
-      if (normal.lengthSq() < 1e-6) {
-        normal.set(0, 0, 1)
-        normal.addScaledVector(tangent, -normal.dot(tangent))
-      }
-      normal.normalize()
-      across.crossVectors(normal, tangent).normalize()
-    }
-    const s = tau * u,
-      env = typeof options.taper === 'function' ? options.taper(v) : 0.19 + 0.81 * envelope(v)
-    const strand = s * 5 + 0.58 * Math.sin(v * 5 + phase) + phase,
-      tone = 0.22 + 0.23 * (0.5 + 0.5 * Math.cos(strand)) + 0.11 * Math.cos(s - 0.4)
-    const groove = 1 + 0.044 * Math.sin(strand) + 0.025 * Math.sin(s * 9 + v * 4.3)
-    pos
-      .copy(center)
-      .addScaledVector(across, width * env * Math.sin(s) * groove)
-      .addScaledVector(normal, depth * env * Math.cos(s) * groove)
-    return point(
-      pos.toArray(),
-      [u + 0.014 * Math.sin(v * 6 + phase), v],
-      blend(h.dark, h.light, clamp(tone + (options.gloss ?? 0), 0.05, 0.77)),
-    )
-  })
-}
-function mound(h, c, r, tilt = 0) {
-  h.hair.grid(29, 14, (u, v) => {
-    const phi = (u - 0.5) * tau,
-      lat = (v - 0.5) * Math.PI,
-      co = Math.cos(lat)
-    const ridge = 1 + 0.037 * Math.sin(phi * 9 + lat * 2) + 0.019 * Math.sin(phi * 17 + lat * 3)
-    const x = r[0] * co * Math.sin(phi) * ridge,
-      y = r[1] * Math.sin(lat)
-    const p = [
-      c[0] + x * Math.cos(tilt) - y * Math.sin(tilt),
-      c[1] + x * Math.sin(tilt) + y * Math.cos(tilt),
-      c[2] + r[2] * co * Math.cos(phi) * ridge,
-    ]
-    return point(
-      p,
-      [u + 0.19 * v, v],
-      blend(h.dark, h.light, 0.2 + 0.22 * (0.5 + 0.5 * Math.cos(phi * 11 + 3 * lat))),
-    )
-  })
-}
 function hairAt(h, angle, y, raised = 0) {
   const p = h.a.point(angle, y)
   p[0] += raised * Math.sin(angle)
   p[2] += raised * Math.cos(angle)
   return p
-}
-function trace(h, angles, side) {
-  return angles.map(([th, y, r]) => hairAt(h, side * th, y, r))
-}
-
-// From the swept part, down the outer forehead and into the cheek-side
-// wisps. Angle, height and half-width describe the actual cut of each lock.
-// Width and height here are millimetres, as on a wigmaker's blocking sheet.
-const frontSections = {
-  silk: [
-    [0.06, 194, 0.5],
-    [0.36, 182, 5.4],
-    [0.61, 168, 9.7],
-    [0.79, 151, 10.5],
-    [0.95, 137, 9.2],
-    [1.075, 123, 7.0],
-    [1.14, 108, 5.0],
-    [1.135, 94, 3.4],
-    [1.115, 83, 1.5],
-    [1.18, 72, 0.62],
-    [1.29, 64, 0.08],
-  ],
-  lute: [
-    [0.1, 193, 0.5],
-    [0.41, 180, 5.5],
-    [0.62, 166, 8.2],
-    [0.81, 151, 10.1],
-    [0.96, 138, 8.9],
-    [1.095, 125, 6.8],
-    [1.15, 111, 4.9],
-    [1.115, 96, 3.4],
-    [1.055, 83, 2.25],
-    [1.055, 72, 1.24],
-    [1.14, 63, 0.59],
-    [1.22, 60, 0.08],
-  ],
-  scholar: [
-    [0.23, 191, 0.5],
-    [0.47, 179, 5.0],
-    [0.73, 164, 7.2],
-    [0.92, 151, 8.1],
-    [1.05, 139, 7.2],
-    [1.15, 125, 5.5],
-    [1.21, 111, 4.5],
-    [1.2, 99, 3.1],
-    [1.15, 87, 2.15],
-    [1.14, 77, 0.88],
-    [1.18, 69, 0.08],
-  ],
-}
-function frameCheeks(h) {
-  const sections = frontSections[h.design]
-  if (!sections) return
-  // Cache the original scalp contour before adding wisps. Every strand lies
-  // on the same measured forehead, independent of the strand built before it.
-  h.sections = new Map()
-  cacheHairSlices(h, 65, 355)
-  const arcRadius = 0.076
-  for (const s of [-1, 1]) {
-    const lute = h.design === 'lute',
-      scholar = h.design === 'scholar'
-    const shortSide = h.design === 'silk' ? s > 0 : s < 0
-    const guides = sections.map(([angle, y, width], i) => {
-      const v = i / (sections.length - 1)
-      const tuck = shortSide ? smooth(0.58, 1, v) : 0
-      const offset =
-        0.044 * s * Math.sin(v * Math.PI * 1.6) +
-        tuck * (lute ? 0.15 : scholar ? 0.09 : 0.23) +
-        (h.design === 'silk' ? 0.11 : 0.034) * bell(y - 125, 9)
-      return new T.Vector3(
-        (angle + offset) * arcRadius,
-        0.001 * y + tuck * (lute ? 0.016 : scholar ? 0.011 : 0.021),
-        0.001 * width * (1 + (shortSide ? -0.13 : 0.06) * Math.sin(Math.PI * v)),
-      )
-    })
-    const flow = new T.CatmullRomCurve3(guides, false, 'centripetal')
-    const surface = (t, u, extra = 0) => {
-      const c = flow.getPoint(t),
-        d = flow.getTangent(t)
-      const span = Math.hypot(d.x, d.y),
-        across = c.z * u
-      const angle = (s * (c.x - (across * d.y) / span)) / arcRadius
-      const y = c.y + (across * d.x) / span
-      const crest = Math.max(0, 1 - u * u)
-      const released = smooth(0.55, 0.89, t)
-      const thickness = (scholar ? 0.0026 : 0.0036) * Math.sin(Math.PI * t) ** 0.68
-      const ridge = crest * (0.85 + 0.12 * Math.cos(u * 17 + t * 4.2 + s))
-      return atLevel(
-        h,
-        angle,
-        y,
-        extra + 0.00023 + thickness * ridge + released * (shortSide ? 0.00052 : 0.00165),
-      )
-    }
-    h.hair.grid(15, 39, (u, t) => {
-      const across = u * 2 - 1,
-        gloss = 0.33 + 0.056 * Math.cos(across * 12 + t * 2.5 + s) + 0.075 * (1 - across * across)
-      return point(surface(t, across), [2 + u, t], blend(h.dark, h.light, gloss))
-    })
-    // A few complete strands leave the edge at different heights. The outer
-    // corner of the eye stays clear even when seen in three-quarter view.
-    for (const [j, lane] of [-1.02, -0.82, -0.49, 0.12, 0.61, 0.92, 1.09].entries()) {
-      const start = 0.035 + 0.047 * (j % 4)
-      const end = 1 - (j % 3) * 0.066
-      const coords = []
-      for (let i = 0; i <= 12; i++) {
-        const t = mix(start, end, i / 12),
-          breathe = smooth(0.47, 0.91, t)
-        const strayed = lane + (j % 2 === 0 ? -0.34 : 0.28) * breathe + 0.1 * Math.sin(10 * t + 2 * j)
-        const pos = surface(t, strayed, 0.00022)
-        const fall = smooth(0.68, 1, t)
-        pos[1] -= fall * (j === 1 || j === 4 ? 0.007 : 0.0028)
-        pos[0] += s * fall * (0.0008 + 0.0011 * Math.sin(j))
-        pos[2] += fall * (lane * 0.0028 + 0.0013 * Math.cos(j))
-        coords.push(pos)
-      }
-      sweep(
-        h.hair,
-        coords,
-        (v) => 0.00006 + (0.00042 + 0.00013 * (j % 3)) * Math.sin(Math.PI * (0.17 + 0.83 * v)) ** 0.75,
-        blend(h.dark, h.light, 0.22 + 0.047 * (j % 4)),
-        16,
-        5,
-      )
-    }
-    // This single stray starts buried under the main lock at the temple. Its
-    // finer end curves away in profile, a little longer on the unpinned side.
-    const wisps = scholar
-      ? [[0.49, -1.2, 0.008]]
-      : lute
-        ? [
-            [0.45, -1.42, 0.014],
-            [0.65, 0.8, 0.009],
-          ]
-        : [[0.43, -1.25, 0.012]]
-    for (const [start, lane, fall] of wisps) {
-      const coords = []
-      for (let j = 0; j <= 10; j++) {
-        const v = j / 10,
-          t = mix(start, 0.99, v)
-        const p = surface(t, lane + 0.22 * Math.sin(v * tau + s), 0.0003)
-        p[0] += s * 0.0016 * Math.sin(Math.PI * v)
-        p[1] -= fall * (shortSide ? 0.65 : 1) * smooth(0.42, 1, v)
-        p[2] += 0.003 * Math.sin(v * Math.PI * 1.4) + lane * 0.0013 * v
-        coords.push(p)
-      }
-      sweep(h.hair, coords, (t) => 0.000045 + 0.00065 * (1 - t) ** 0.71, blend(h.dark, h.light, 0.36), 17, 5)
-    }
-  }
-}
-function babyHairs(h) {
-  for (const s of [-1, 1])
-    for (let i = 0; i < 15; i++) {
-      const th = s * (0.71 + i * 0.072),
-        root = hairEdge(h.a, th)
-      const len = 0.0025 + 0.0056 * (0.5 + 0.5 * Math.sin(i * 3.85 + s))
-      const coords = [
-        hairAt(h, th, root + 0.0031, 0.00035),
-        hairAt(h, th + s * 0.016, root + 0.0006, 0.00068),
-        hairAt(h, th + s * 0.027, root - len * 0.55, 0.00047),
-        hairAt(h, th + s * 0.014, root - len, 0.00015),
-      ]
-      sweep(
-        h.hair,
-        coords,
-        (t) => 0.00008 + 0.00044 * (1 - t) ** 0.7,
-        blend(h.dark, h.light, 0.12 + 0.018 * (i % 4)),
-        6,
-        4,
-      )
-    }
-  for (const s of [-1, 1])
-    for (let j = 0; j < 13; j++) {
-      const a = s * (0.055 + 0.056 * j + 0.014 * Math.sin(j * 3 + 0.7)),
-        root = hairEdge(h.a, a)
-      const length = 0.0014 + 0.0028 * (0.5 + 0.5 * Math.sin(j * 2.37 + s))
-      const path = [
-        hairAt(h, a, root + 0.0022, 0.0003),
-        hairAt(h, a + s * 0.01, root + 0.0004, 0.0005),
-        hairAt(h, a + s * 0.02, root - length, 0.00011),
-      ]
-      sweep(h.hair, path, (t) => 0.000045 + 0.00026 * (1 - t), blend(h.dark, h.light, 0.31), 4, 4)
-    }
-  // Fine nape hairs follow the skull as it turns under the occiput.
-  for (const side of [-1, 1]) {
-    for (let j = 0; j < 13; j++) {
-      const theta = side * (1.88 + j * 0.099 + 0.015 * Math.sin(j * 2.1))
-      const y = hairEdge(h.a, theta),
-        length = 0.0026 + 0.0038 * (0.5 + 0.5 * Math.cos(j * 3.29 + side))
-      const pts = [
-        hairAt(h, theta, y + 0.0034, 0.00032),
-        hairAt(h, theta + side * 0.019, y, 0.00061),
-        hairAt(h, theta + side * 0.029, y - length * 0.59, 0.00047),
-        hairAt(h, theta + side * 0.022, y - length, 0.00012),
-      ]
-      sweep(h.hair, pts, (t) => 0.000055 + 0.00052 * (1 - t) ** 0.85, blend(h.dark, h.light, 0.26), 5, 4)
-    }
-  }
 }
 function ring(h, c, rx, rz, height, colors, tilt = 0, flutes = 0) {
   h.metal.grid(40, 7, (u, v) => {
@@ -650,432 +259,12 @@ function winding(h, points, r, colour) {
   wire(h.metal, points, r, colour, Math.max(13, points.length * 2))
 }
 
-function silkCoiffure(h) {
-  const { metal } = h
-  const gold = tint(0xb8965c),
-    edge = tint(0xd9b878),
-    jade = tint(0x94b9a6),
-    pearl = tint(0xf2dfc0)
-  // Two brushed sidelocks are tucked behind the ear. The left is lifted
-  // high; the fuller right panel crosses low over the outer forehead.
-  for (const s of [-1, 1]) {
-    brushedSide(h, s)
-    lock(
-      h,
-      trace(
-        h,
-        [
-          [0.92, 0.151, 0.001],
-          [1.03, 0.136, 0.002],
-          [1.13, 0.118, 0.0023],
-          [1.18, 0.102, 0.0019],
-          [1.15, 0.092, 0.0008],
-        ],
-        s,
-      ),
-      0.0025,
-      0.0018,
-      { taper: (v) => 0.055 + 0.945 * (1 - v) ** 0.77, steps: 18 },
-    )
-  }
-  mound(h, [-0.007, 0.228, -0.054], [0.043, 0.031, 0.039], -0.18)
-  // A single crescent combed in a folded S, with a narrow opening between
-  // the lifted arch and the knot. The overlapping tiers share buried roots.
-  lock(
-    h,
-    [
-      [0.034, 0.201, -0.053],
-      [0.042, 0.23, -0.06],
-      [0.034, 0.254, -0.065],
-      [0.01, 0.272, -0.061],
-      [-0.023, 0.28, -0.052],
-      [-0.046, 0.272, -0.045],
-      [-0.049, 0.252, -0.04],
-      [-0.037, 0.242, -0.041],
-      [-0.02, 0.245, -0.055],
-      [-0.002, 0.229, -0.073],
-    ],
-    0.0144,
-    0.0135,
-    { steps: 54, sides: 16, normal: [0.08, 0.11, 1], phase: 0.8, taper: (v) => 0.25 + 0.75 * envelope(v) },
-  )
-  lock(
-    h,
-    [
-      [0.03, 0.216, -0.059],
-      [0.015, 0.235, -0.049],
-      [-0.001, 0.246, -0.046],
-      [-0.022, 0.256, -0.05],
-      [-0.034, 0.264, -0.051],
-      [-0.029, 0.27, -0.05],
-      [-0.007, 0.272, -0.06],
-      [0.013, 0.261, -0.074],
-    ],
-    0.0074,
-    0.0059,
-    { normal: [0, 0.14, 1], steps: 36, phase: 2.2 },
-  )
-  lock(
-    h,
-    [
-      [-0.032, 0.207, -0.076],
-      [-0.049, 0.23, -0.078],
-      [-0.043, 0.247, -0.08],
-      [-0.021, 0.258, -0.084],
-      [0.006, 0.247, -0.089],
-      [0.026, 0.233, -0.082],
-      [0.02, 0.218, -0.065],
-    ],
-    0.0125,
-    0.011,
-    { steps: 37, normal: [0, 0.17, -1], phase: 2.2 },
-  )
-  lock(
-    h,
-    [
-      [0.014, 0.196, -0.087],
-      [-0.01, 0.2, -0.104],
-      [-0.035, 0.217, -0.096],
-      [-0.036, 0.232, -0.085],
-      [-0.017, 0.239, -0.092],
-      [0.006, 0.232, -0.098],
-      [0.015, 0.215, -0.079],
-    ],
-    0.0095,
-    0.0087,
-    { normal: [0, -0.1, -1], phase: 0.35 },
-  )
-  // The pale jade shaft goes through both the knot and the gold butterfly.
-  const mount = atLevel(h, -1.3, 0.192, 0.0018)
-  const stem = [mount, [-0.054, 0.207, -0.028], [0.005, 0.228, -0.06], [0.056, 0.238, -0.064]]
-  winding(h, stem, (t) => 0.00105 + 0.00123 * Math.sin(Math.PI * (0.18 + 0.72 * t)), jade)
-  bead(metal, [0.054, 0.2377, -0.064], 0.0031, jade, 1.16)
-  const frame = jewelleryFrame(mount, [-0.62, 0.13, 0.78])
-  for (const s of [-1, 1]) {
-    petal(metal, frame, [0, 0.001, 0], [s * 0.017, 0.0115], 0.0054, gold, 0.0018)
-    petal(metal, frame, [0, -0.001, 0.0003], [s * 0.011, -0.0095], 0.0048, edge, 0.0014)
-    petal(metal, frame, [s * 0.0017, 0.002, 0.0021], [s * 0.009, 0.0058], 0.002, jade, 0.0009)
-    winding(
-      h,
-      [
-        frame(s * 0.002, 0.001, 0.0027),
-        frame(s * 0.008, 0.0042, 0.0031),
-        frame(s * 0.013, 0.0081, 0.0026),
-        frame(s * 0.0159, 0.0105, 0.0018),
-      ],
-      0.00039,
-      edge,
-    )
-    winding(
-      h,
-      [
-        frame(s * 0.001, -0.0007, 0.0023),
-        frame(s * 0.0046, -0.0029, 0.003),
-        frame(s * 0.0078, -0.0062, 0.0027),
-      ],
-      0.00034,
-      gold,
-    )
-    winding(
-      h,
-      [frame(s * 0.001, 0.004, 0.001), frame(s * 0.004, 0.008, 0.0015), frame(s * 0.0048, 0.011, 0.0018)],
-      0.00048,
-      edge,
-    )
-  }
-  winding(h, [frame(0, -0.005, 0.001), frame(0, 0.001, 0.003), frame(0, 0.007, 0.002)], 0.00135, edge)
-  for (const [x, drop] of [
-    [-0.009, 0.022],
-    [0.002, 0.031],
-  ]) {
-    const pts = [
-      frame(x, 0.0, 0.0005),
-      frame(x - 0.001, -drop * 0.38, 0.0025),
-      frame(x + 0.001, -drop * 0.68, 0.0035),
-      frame(x + 0.0006, -drop, 0.004),
-    ]
-    winding(h, pts, 0.00047, edge)
-    bead(metal, pts[2], 0.00164, jade)
-    bead(metal, pts[3], 0.00255, pearl, 1.36)
-  }
-  bead(metal, mount, 0.0024, gold)
-}
-
-function luteCoiffure(h) {
+function bindDrummer(h) {
   const metal = h.metal,
-    enamel = tint(0x598685),
-    gold = tint(0xbea075),
-    shell = tint(0xe5bab2),
-    ivory = tint(0xf0d7bf)
-  for (const s of [-1, 1]) {
-    // A long undulation from the curved centre-part to the nape. The temple
-    // curls end against the cheek, forward of the helix and behind the eye.
-    brushedSide(h, s)
-    lock(
-      h,
-      trace(
-        h,
-        [
-          [0.91, 0.15, 0.001],
-          [1.06, 0.136, 0.0025],
-          [1.14, 0.115, 0.0029],
-          [1.095, 0.099, 0.0026],
-          [1.14, 0.085, 0.0027],
-          [1.245, 0.081, 0.0017],
-        ],
-        s,
-      ),
-      0.0028,
-      0.0021,
-      { steps: 24, taper: (v) => 0.055 + 0.945 * (1 - v) ** 0.66, phase: 1.2 },
-    )
-    wing(
-      h,
-      [
-        [s * 1.46, 0.3],
-        [s * 1.69, 0.24],
-        [s * 1.98, 0.145],
-        [s * 2.2, 0.19],
-        [s * 2.48, 0.21],
-        [s * 2.72, 0.28],
-      ],
-      0.0052,
-      0.0032,
-      2.8,
-    )
-  }
-  mound(h, [-0.01, 0.109, -0.11], [0.046, 0.034, 0.04], 0.19)
-  lock(
-    h,
-    [
-      [-0.051, 0.129, -0.078],
-      [-0.051, 0.107, -0.111],
-      [-0.033, 0.085, -0.133],
-      [-0.002, 0.079, -0.138],
-      [0.027, 0.089, -0.129],
-      [0.038, 0.108, -0.115],
-      [0.028, 0.121, -0.102],
-      [0.009, 0.126, -0.106],
-    ],
-    0.0138,
-    0.0117,
-    { normal: [0, -0.17, -1], steps: 43, phase: 0.55 },
-  )
-  lock(
-    h,
-    [
-      [0.036, 0.139, -0.083],
-      [0.026, 0.138, -0.115],
-      [0.006, 0.129, -0.136],
-      [-0.019, 0.113, -0.144],
-      [-0.033, 0.099, -0.139],
-      [-0.014, 0.093, -0.13],
-      [0.01, 0.104, -0.128],
-      [0.026, 0.122, -0.111],
-    ],
-    0.0115,
-    0.0098,
-    { normal: [0, 0, -1], steps: 40, phase: 1.5 },
-  )
-  const frame = jewelleryFrame(atLevel(h, -1.42, 0.158, 0.0024), [-0.64, 0.1, 0.76])
-  const stems = [
-    [-0.023, -0.018],
-    [-0.008, -0.006],
-    [0.005, 0.004],
-    [0.016, 0.013],
-  ]
-  winding(
-    h,
-    stems.map(([x, y]) => frame(x, y, 0)),
-    0.00103,
-    gold,
-  )
-  for (const s of [-1, 1]) {
-    petal(metal, frame, [s * 0.006, 0.001, 0], [s * 0.015, 0.007], 0.0038, enamel, 0.0012)
-    petal(
-      metal,
-      frame,
-      [s * 0.002, -0.004, 0.0004],
-      [s * 0.01, -0.008],
-      0.0036,
-      blend(enamel, gold, 0.12),
-      0.0008,
-    )
-  }
-  for (const [x, y, rad, pigment] of [
-    [-0.01, -0.003, 0.0084, shell],
-    [0.005, 0.004, 0.0103, ivory],
-    [0.015, 0.012, 0.0057, shell],
-  ]) {
-    for (let i = 0; i < 5; i++) {
-      const th = (i * tau) / 5 + 0.24
-      petal(
-        metal,
-        frame,
-        [x, y, 0.0026],
-        [rad * Math.sin(th), rad * Math.cos(th)],
-        rad * 0.41,
-        pigment,
-        0.0013,
-      )
-    }
-    bead(metal, frame(x, y, 0.0049), rad * 0.23, gold)
-  }
-  const pend = [frame(-0.015, -0.005, 0), frame(-0.018, -0.015, 0.002), frame(-0.018, -0.022, 0.0025)]
-  winding(h, pend, 0.00055, gold)
-  bead(metal, pend[2], 0.0026, enamel, 1.42)
-  const anchor = atLevel(h, -1.62, 0.149, 0.0003)
-  winding(h, [anchor, frame(-0.009, -0.008, 0), frame(0.016, 0.012, 0)], 0.00104, gold)
-}
-
-function scholarCoiffure(h) {
-  const silver = tint(0xaeaca0),
-    ink = tint(0x43565c),
-    jade = tint(0x77988c),
-    ivory = tint(0xdfd7aa)
-  for (const s of [-1, 1]) {
-    brushedSide(h, s)
-    lock(
-      h,
-      trace(
-        h,
-        [
-          [0.98, 0.143, 0.002],
-          [1.13, 0.124, 0.0022],
-          [1.21, 0.1, 0.0014],
-          [1.22, 0.093, 0.0008],
-        ],
-        s,
-      ),
-      0.0021,
-      0.0014,
-      { steps: 12, taper: (v) => 0.12 + 0.88 * (1 - v) ** 0.7 },
-    )
-  }
-  mound(h, [0.002, 0.239, -0.037], [0.028, 0.035, 0.031], -0.06)
-  lock(
-    h,
-    [
-      [-0.021, 0.22, -0.041],
-      [-0.024, 0.241, -0.046],
-      [-0.01, 0.261, -0.055],
-      [0.009, 0.265, -0.049],
-      [0.022, 0.25, -0.036],
-      [0.019, 0.229, -0.027],
-    ],
-    0.0089,
-    0.0074,
-    { normal: [0, 0.2, 1], phase: 2.8 },
-  )
-  const cx = 0.002,
-    cz = -0.039
-  ring(h, [cx, 0.239, cz], 0.0315, 0.0335, 0.0145, [ink, silver], 0.0008, 12)
-  h.metal.grid(34, 8, (u, v) => {
-    const th = (u - 0.5) * Math.PI * 1.56,
-      co = Math.cos(th),
-      si = Math.sin(th)
-    const foot = 0.239 + 0.0008 * si,
-      peak = 0.249 + 0.0143 * Math.max(0, co) ** 2
-    const radius = mix(1, 0.78, v) + 0.036 * Math.sin(Math.PI * v)
-    const p = [cx + 0.0305 * radius * si, mix(foot, peak, v), cz + 0.034 * radius * co]
-    const edge = v < 0.14 || v > 0.84
-    return point(p, [u, v], edge ? silver : blend(ink, jade, 0.16 + 0.16 * Math.cos(th * 4) ** 2))
-  })
-  // An open silver-and-smoked-jade guan. Two separate bowed sides are joined
-  // by a ridge at the apex; the bound topknot remains visible through its bays.
-  for (const s of [-1, 1]) {
-    const points = [
-      [cx + s * 0.027, 0.231, cz + 0.003],
-      [cx + s * 0.03, 0.242, cz + 0.005],
-      [cx + s * 0.023, 0.262, cz + 0.002],
-      [cx + s * 0.011, 0.276, cz - 0.001],
-      [cx, 0.28, cz - 0.002],
-    ]
-    winding(h, points, 0.0019, silver)
-    winding(
-      h,
-      points.map(([x, y, z], i) => [x, y - 0.001, z - 0.013 + 0.002 * i]),
-      0.00135,
-      ink,
-    )
-  }
-  const front = jewelleryFrame([cx, 0.241, cz + 0.033], [0, 0.24, 1])
-  const top = [
-    front(-0.023, -0.001),
-    front(-0.013, 0.012, 0.001),
-    front(0, 0.029, 0.002),
-    front(0.013, 0.012, 0.001),
-    front(0.023, -0.001),
-  ]
-  winding(h, top, 0.00165, silver)
-  for (const s of [-1, 1]) {
-    petal(h.metal, front, [s * 0.0015, 0.001, 0.001], [s * 0.015, 0.013], 0.0039, ink, 0.0008)
-    winding(
-      h,
-      [
-        front(s * 0.017, 0.005, 0.001),
-        front(s * 0.011, 0.009, 0.002),
-        front(s * 0.011, 0.018, 0.003),
-        front(s * 0.005, 0.023, 0.003),
-      ],
-      0.0007,
-      silver,
-    )
-  }
-  petal(h.metal, front, [0, 0.003, 0.0012], [0, 0.016], 0.0036, jade, 0.001)
-  bead(h.metal, front(0, 0.02, 0.0028), 0.00225, ivory)
-  winding(
-    h,
-    [
-      [-0.058, 0.242, cz - 0.004],
-      [-0.025, 0.243, cz],
-      [0.019, 0.244, cz + 0.001],
-      [0.056, 0.245, cz + 0.002],
-    ],
-    (t) => 0.00065 + 0.00135 * Math.sin(Math.PI * (0.13 + 0.73 * t)),
-    silver,
-  )
-  bead(h.metal, [-0.057, 0.242, cz - 0.004], 0.0031, jade, 1.1)
-}
-
-function drummerCoiffure(h) {
-  const { a, metal } = h,
-    red = blend(tint(a.profile.colors.outer), tint(0x992e30), 0.47),
-    wine = tint(0x672f33),
-    brass = tint(0xb99358),
-    amber = tint(0xd0ad75)
-  for (const s of [-1, 1]) {
-    wing(
-      h,
-      [
-        [s * 0.16, 0.2],
-        [s * 0.46, 0.14],
-        [s * 0.81, 0.15],
-        [s * 1.12, 0.26],
-        [s * 1.46, 0.37],
-        [s * 1.84, 0.56],
-      ],
-      0.0059,
-      0.0038,
-      1.8 * s,
-    )
-    lock(
-      h,
-      trace(
-        h,
-        [
-          [1.06, 0.14, 0.002],
-          [1.13, 0.118, 0.0025],
-          [1.15, 0.101, 0.0018],
-          [1.2, 0.093, 0.0005],
-        ],
-        s,
-      ),
-      0.0026,
-      0.0018,
-      { steps: 13, taper: (v) => 0.08 + 0.92 * (1 - v) ** 0.75 },
-    )
-  }
+    red = tint(0x913c3e),
+    wine = tint(0x5e2a35),
+    brass = tint(0xba955c),
+    amber = tint(0xd6ad77)
   // Temple cloth sits on the scalp and remains in contact around the back.
   cacheHairSlices(h, 222, 311)
   const headband = (theta, v, out = 0) => {
@@ -1102,54 +291,6 @@ function drummerCoiffure(h) {
       [headband(th - 0.025, 0.43, 0.0005), headband(th, 0.65, 0.0005), headband(th + 0.025, 0.43, 0.0005)],
       0.00038,
       amber,
-    )
-  }
-  mound(h, [0.012, 0.233, -0.047], [0.032, 0.027, 0.033], 0.28)
-  lock(
-    h,
-    [
-      [-0.014, 0.223, -0.037],
-      [-0.014, 0.245, -0.042],
-      [0.009, 0.257, -0.053],
-      [0.031, 0.251, -0.06],
-      [0.04, 0.234, -0.069],
-      [0.025, 0.22, -0.072],
-      [0.009, 0.223, -0.064],
-    ],
-    0.0105,
-    0.0093,
-    { normal: [0, 0.1, -1], steps: 35, phase: 0.8 },
-  )
-  ring(h, [-0.001, 0.231, -0.041], 0.03, 0.03, 0.0115, [wine, brass], 0.0048, 10)
-  ring(h, [0.009, 0.243, -0.046], 0.027, 0.028, 0.009, [blend(brass, wine, 0.37), brass], 0.0032, 8)
-  for (const s of [-1, 1]) {
-    winding(
-      h,
-      [
-        [0.009 + s * 0.021, 0.243, -0.033],
-        [0.009 + s * 0.019, 0.25, -0.029],
-        [0.009 + s * 0.012, 0.255, -0.03],
-        [0.009 + s * 0.005, 0.255, -0.037],
-      ],
-      0.00115,
-      brass,
-    )
-  }
-  for (let i = 0; i < 3; i++) {
-    const d = i - 1
-    lock(
-      h,
-      [
-        [0.023, 0.234 + d * 0.003, -0.057],
-        [0.036, 0.225 + d * 0.002, -0.083],
-        [0.04, 0.205, -0.096 + d * 0.003],
-        [0.04 + d * 0.004, 0.183, -0.105],
-        [0.054 + d * 0.004, 0.162, -0.106],
-        [0.061 + d * 0.004, 0.15 + d * 0.005, -0.098],
-      ],
-      0.0048,
-      0.0041,
-      { steps: 26, phase: i * 1.7, taper: (v) => 0.045 + 0.955 * (1 - v) ** 0.57 },
     )
   }
   const tie = headband(2.54, 0.57, 0.001)
@@ -1201,19 +342,28 @@ export function dressHeroHair(group, a) {
     light: tint(dye[design][1]),
   }
   combScalp(h)
-  babyHairs(h)
+  sweptPanels(h)
+  gatherNape(h)
+  featherRoots(h)
+  if (design === 'drummer') bindDrummer(h)
+  foldTemples(h)
+  fringe(h)
+  looseNape(h)
   dressers[design](h)
-  frameCheeks(h)
   for (let i = 0; i < h.hair.uv.length; i += 2) {
     const u = h.hair.uv[i]
-    h.hair.uv[i] = u >= 2 ? 0.512 + 0.476 * (u - 2) : 0.018 + 0.35 * (u + 0.15)
+    h.hair.uv[i] =
+      u >= 4 ? 0.828 + 0.168 * (u - 4) : u >= 2 ? 0.505 + 0.31 * (u - 2) : 0.018 + 0.35 * (u + 0.15)
   }
-  fibreMaterial ??= new T.MeshStandardMaterial({
+  fibreMaterial ??= new T.MeshPhysicalMaterial({
     name: '梳拢的真丝光发束',
     vertexColors: true,
     map: fibrePigment(),
-    alphaTest: 0.4,
-    roughness: 0.89,
+    alphaTest: 0.32,
+    alphaToCoverage: true,
+    roughness: 0.74,
+    anisotropy: 0.38,
+    anisotropyRotation: Math.PI / 2,
     ...strandFinish(),
     side: T.DoubleSide,
   })
@@ -1224,9 +374,906 @@ export function dressHeroHair(group, a) {
     metalness: 0.22,
     side: T.DoubleSide,
   })
-  group.add(
-    h.hair.mesh(fibreMaterial, names[design]),
-    h.metal.mesh(ornamentMaterial, names[design] + '·钗带'),
-  )
+  group.add(h.hair.mesh(fibreMaterial, names[design]), h.metal.mesh(ornamentMaterial, names[design] + '·钗带'))
   return true
+}
+
+// Each half of the comb runs from the part in an arc over the temple, before
+// rising into the gathered hair at the back. Interruptions of the highlight
+// follow neighbouring locks, independent of the light position.
+function sweptPanels(h) {
+  const division = { silk: -0.43, lute: 0.23, scholar: -0.51, drummer: 0.24 }[h.design]
+  const profile = h.a
+  const sphereY = 0.14,
+    radiusY = 0.093
+  const latitude = (th) => Math.asin(clamp((hairline(profile, th) - sphereY) / radiusY, -0.99, 0.99))
+  const front = latitude(division),
+    rear = Math.PI - latitude(division + Math.PI)
+  const inclination = h.design === 'lute' ? 0.4 : h.design === 'scholar' ? 0.55 : 0.47
+  for (const side of [-1, 1]) {
+    const panel = (u, v, fly = 0) => {
+      const alpha = mix(front, rear, u),
+        rim = division + side * Math.PI * u
+      const azimuth = division + 0.14 * Math.sin(u * Math.PI)
+      const meridian = new T.Vector3(
+        Math.sin(azimuth) * Math.cos(alpha),
+        Math.sin(alpha),
+        Math.cos(azimuth) * Math.cos(alpha),
+      )
+      const equator = new T.Vector3(
+        Math.sin(rim) * Math.cos(latitude(rim)),
+        Math.sin(latitude(rim)),
+        Math.cos(rim) * Math.cos(latitude(rim)),
+      )
+      const arc = Math.acos(clamp(meridian.dot(equator), -1, 1))
+      const ray = meridian.clone().lerp(equator, v)
+      if (arc > 0.002)
+        ray
+          .copy(meridian)
+          .multiplyScalar(Math.sin((1 - v) * arc) / Math.sin(arc))
+          .addScaledVector(equator, Math.sin(v * arc) / Math.sin(arc))
+      const th = Math.atan2(ray.x, ray.z) + side * inclination * envelope(v) * Math.sin(u * Math.PI) ** 0.72
+      const span = hairline(profile, th),
+        y = clamp(sphereY + radiusY * ray.y, span, 0.233)
+      const t = clamp((y - span) / (0.233 - span)),
+        fade = Math.min(1, 17 * v, 28 * (1 - v), 37 * u, 34 * (1 - u))
+      const rhythm = tau * (u * 17.0 + 0.12 * Math.sin(35 * u + 5.1 * v) + 0.13 * Math.cos(72 * u - 3.5 * v))
+      const lobe = 0.5 + 0.5 * Math.cos(rhythm),
+        gloss = 0.5 + 0.5 * Math.sin(rhythm - 0.86)
+      const p = profile.point(th, y)
+      const thickness =
+        (0.0035 + 0.003 * Math.sin(v * Math.PI) * Math.sin(u * Math.PI) + 0.00085 * lobe * fade) *
+          Math.sin(Math.PI * t) ** 0.63 +
+        fly
+      p[0] += Math.sin(th) * thickness
+      p[2] += Math.cos(th) * thickness
+      p[1] += 0.0068 * t + 0.0021 * envelope(t)
+      const col = blend(
+        h.dark,
+        h.light,
+        0.17 +
+          0.047 * lobe +
+          0.054 * gloss +
+          0.042 * Math.sin(57 * u + v * 3) +
+          0.08 * bell(v - 0.39 + 0.1 * Math.sin(u * 7), 0.21),
+      )
+      return point(p, [u + 0.004 * Math.sin(v * 6 + u * 24), v], col)
+    }
+    h.hair.grid(113, 41, (u, v) => panel(u, v), side < 0)
+    if (side > 0) {
+      // A narrow exposed part separates the two banks of roots. At the
+      // summit it disappears under hair pulled back towards the knot.
+      h.metal.grid(5, 35, (u, t) => {
+        const v = 0.014 + 0.46 * t
+        const p = panel(v, 0).p
+        const center = new T.Vector3(...p)
+        const outward = center
+          .clone()
+          .sub(new T.Vector3(0, 0.14, -0.016))
+          .normalize()
+        const tangent = new T.Vector3(...panel(v + 0.001, 0).p).sub(center).normalize()
+        const transverse = new T.Vector3().crossVectors(outward, tangent).normalize()
+        const width = (0.00039 + 0.00018 * Math.sin(t * 13.1) ** 2) * envelope(t)
+        center.addScaledVector(transverse, (2 * u - 1) * width).addScaledVector(outward, 0.00042)
+        const colour = blend(h.dark, tint(h.a.profile.skin), 0.36 * Math.sin(Math.PI * u) ** 1.3 * envelope(t))
+        return point(center.toArray(), [u, t], colour)
+      })
+    }
+    for (let j = 0; j < 23; j++) {
+      const ui = 0.036 + (0.88 * (j + 0.31 * Math.sin(j * 2.8 + side))) / 23
+      const start = 0.015 + 0.15 * (0.5 + 0.5 * Math.cos(j * 2.9))
+      const stop = 0.64 + 0.3 * (0.5 + 0.5 * Math.sin(j * 1.93))
+      const pts = []
+      for (let q = 0; q <= 9; q++) {
+        const t = q / 9,
+          v = mix(start, stop, t)
+        const u = ui + 0.004 * Math.sin(t * 6.9 + 3 * j)
+        const height = (0.00013 + 0.0009 * Math.cos(j * 3.1) ** 2) * envelope(t)
+        pts.push(panel(u, v, height).p)
+      }
+      sweep(
+        h.hair,
+        pts,
+        (t) => 0.00006 + 0.00028 * envelope(t),
+        blend(h.dark, h.light, 0.27 + 0.1 * Math.sin(j * 4) ** 2),
+        12,
+        4,
+      )
+    }
+  }
+}
+
+// Loose hair below the parietal ridge rises towards the binding. Individual
+// sections narrow as they meet there. Their roots remain spread across the nape.
+function gatherNape(h) {
+  const low = h.design === 'lute',
+    back = h.design === 'drummer' ? 0.2 : 0
+  for (const side of [-1, 1]) {
+    h.hair.grid(
+      54,
+      26,
+      (u, v) => {
+        const phi = 1.69 + 1.51 * u
+        const root = hairline(h.a, side * phi)
+        const target = low ? 0.136 : 0.221
+        const th =
+          side * (phi + (0.87 + 0.15 * back) * (1 - u) * v + 0.1 * Math.sin(v * 4.2 + u * 2.5) * envelope(v))
+        const y = mix(root, target, v * 0.92 + 0.08 * v * v)
+        const p = h.a.point(th, y),
+          f = clamp((y - root) / (0.233 - root))
+        const boundary = Math.min(1, 13 * u, 22 * (1 - u), 20 * (1 - v), 15 * v)
+        const rhythm = tau * (u * 7.2 + 0.15 * Math.sin(u * 13 - v * 4))
+        const ridge = 0.5 + 0.5 * Math.cos(rhythm)
+        const base = (0.0043 + 0.0044 * envelope(v) + 0.001 * ridge) * boundary * envelope(f)
+        p[0] += Math.sin(th) * base
+        p[2] += Math.cos(th) * base
+        p[1] += 0.0067 * f + 0.0021 * envelope(f)
+        return point(
+          p,
+          [0.09 + 0.68 * u + 0.005 * Math.sin(v * 5 + u * 12), v],
+          blend(
+            h.dark,
+            h.light,
+            0.15 + 0.072 * ridge + 0.06 * Math.cos(rhythm - 0.8) + 0.05 * Math.sin(u * 27 + v * 2),
+          ),
+        )
+      },
+      side < 0,
+    )
+  }
+}
+
+// A card from overlapping, largely continuous fibres. Sampling alpha as MASK
+// preserves depth from either side and keeps every lock usable in the city pass.
+function featherRoots(h) {
+  const sections = 27
+  for (let j = 0; j < sections; j++) {
+    h.hair.grid(15, 11, (u, v) => {
+      const longitude = ((j + u) / sections - 0.5) * tau
+      const rear = smooth(1.69, 2.68, Math.abs(longitude))
+      const dir = Math.tanh(longitude * 3)
+      const th = longitude + dir * v * (0.036 + 0.14 * rear)
+      const edge = hairline(h.a, th)
+      const depth =
+        0.005 +
+        0.003 * (0.5 + 0.5 * Math.sin(11 * th)) +
+        rear * (0.008 + 0.011 * (0.5 + 0.5 * Math.cos(5.3 * th)))
+      const y = edge + 0.006 * (1 - v) - depth * v
+      const p = hairAt(h, th, y, 0.0009 + 0.0007 * envelope(v))
+      p[2] -= rear * (0.0021 + v * v * 0.012)
+      return point(p, [4 + u, v], blend(h.dark, h.light, 0.2 + 0.06 * Math.cos(th * 31)))
+    })
+  } // Longer individual hairs break the shadow where the occiput turns
+  // into the neck. Their tips hang just clear of the upward-curving skull.
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 14; i++) {
+      const angle = side * (1.82 + i * 0.099 + 0.019 * Math.sin(2.4 * i))
+      const root = hairline(h.a, angle)
+      const length = 0.008 + 0.012 * (0.5 + 0.5 * Math.sin(2.75 * i + side))
+      const points = []
+      for (let k = 0; k < 5; k++) {
+        const t = k / 4,
+          th = angle + side * 0.095 * t
+        const p = hairAt(h, th, root + 0.004 - length * t, 0.0008)
+        p[2] -= 0.013 * t * t * smooth(1.78, 2.6, Math.abs(th))
+        points.push(p)
+      }
+      sweep(
+        h.hair,
+        points,
+        (t) => 0.00004 + 0.00035 * (1 - t) ** 0.76,
+        blend(h.dark, h.light, 0.16 + 0.08 * Math.sin(i) ** 2),
+        6,
+        4,
+      )
+    }
+  }
+}
+
+const mm = 0.001
+function hairLock(h, guides, options = {}) {
+  const curve = new T.CatmullRomCurve3(
+    guides.map(([x, y, z]) => new T.Vector3(x, y, z).multiplyScalar(mm)),
+    false,
+    'catmullrom',
+    0.43,
+  )
+  const normal = new T.Vector3(...(options.normal ?? [0, 0.12, 1])).normalize()
+  const steps = options.steps ?? Math.max(20, guides.length * 5)
+  const phase = options.phase ?? 0
+  const card = options.card ?? false
+  const depth = options.depth ?? 0.33
+  const spiral = options.twist ?? 0.26
+  const rows = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps,
+      c = curve.getPoint(t),
+      tangent = curve.getTangent(t)
+    const p = t * (guides.length - 1),
+      k = Math.min(guides.length - 2, Math.floor(p))
+    const w = mm * mix(guides[k][3], guides[k + 1][3], smooth(0, 1, p - k))
+    const n = normal.clone().addScaledVector(tangent, -normal.dot(tangent))
+    if (n.lengthSq() < 1e-8) {
+      n.set(1, 0, 0).addScaledVector(tangent, -tangent.x)
+    }
+    n.normalize().applyAxisAngle(tangent, spiral * Math.sin(t * Math.PI + phase))
+    const across = new T.Vector3().crossVectors(n, tangent).normalize()
+    rows.push({ c, n, across, w })
+  }
+  const sheen = options.sheen ?? h.light
+  h.hair.grid(card ? 8 : 22, steps, (u, t, i, j) => {
+    const { c, n, across, w } = rows[j]
+    const angle = tau * u,
+      lateral = card ? 2 * u - 1 : Math.sin(angle)
+    const surface = card ? 1 - lateral * lateral : Math.cos(angle)
+    const groove =
+      0.5 + 0.5 * Math.cos((lateral * (card ? 3.5 : 4.8) + 0.095 * Math.sin(t * 6 + phase) + 0.45) * tau)
+    const edge = card ? 0.42 + 0.58 * (1 - lateral * lateral) : 1
+    const pos = c
+      .clone()
+      .addScaledVector(across, lateral * w)
+      .addScaledVector(n, w * depth * (surface * (0.81 + 0.19 * groove) + 0.055 * groove * edge))
+    const glint =
+      0.1 +
+      0.11 * (1 - lateral * lateral) +
+      0.073 * groove +
+      0.047 * Math.sin(lateral * 10 + t * 5 + phase) +
+      0.105 * bell(t - 0.43 - 0.09 * Math.cos(phase), 0.16)
+    const shift = 0.011 * Math.sin(t * 7 + phase)
+    return point(
+      pos.toArray(),
+      [card ? 2 + u : 0.13 + 0.64 * u + shift, t],
+      blend(h.dark, sheen, clamp(glint, 0.055, 0.6)),
+    )
+  })
+}
+
+// The free part of a front lock retains its own width instead of shrinking to
+// the jaw. Each lock leaves the head at its own height and turns in profile.
+function fringe(h) {
+  const style = h.design,
+    lute = style === 'lute',
+    silk = style === 'silk',
+    scholar = style === 'scholar'
+  h.sections = new Map()
+  const division = { silk: -0.35, lute: 0.18, scholar: -0.48, drummer: 0.33 }[style]
+  for (const side of [-1, 1]) {
+    const long = lute || silk || (scholar && side > 0)
+    const angle = (n) => division * (1 - n) + side * n
+    const fromScalp = (th, y, w, raise) => [...atLevel(h, th, y * mm, raise * mm).map((n) => n / mm), w]
+    const rows = [
+      fromScalp(side * 0.54, 207, 0.6, -1.0),
+      fromScalp(side * 0.58, 189, 4.0, -0.4),
+      fromScalp(side * 0.68, 175, lute ? 8.5 : 7.8, 0.85),
+      fromScalp(side * 0.85, 160, lute ? 10.3 : 9.5, 1.35),
+      fromScalp(angle(0.96), 142, lute ? 9 : 8.2, 1.9),
+      fromScalp(side * (scholar ? 1.17 : 1.11), 123, lute ? 7.6 : 6.5, 2.0),
+    ]
+    if (style === 'drummer') {
+      const lead = side < 0
+      rows.splice(
+        2,
+        4,
+        fromScalp(angle(0.38), 187, 7, 1.8),
+        fromScalp(angle(0.69), 177, 8, 2.3),
+        fromScalp(angle(0.9), 170, 6.0, 1.7),
+        fromScalp(side * 1.03, 163, lead ? 2.9 : 1.3, 1.2),
+        fromScalp(side * 1.1, lead ? 142 : 158, 0.13, 1.1),
+      )
+    } else {
+      const [x, y, z] = rows.at(-1)
+      rows.push(
+        [x + side * 3.7, y - 19, z + 1.1, long ? 7.5 : 4.3],
+        [x + side * (lute ? 8 : 4.4), y - 38, z - (lute ? 2 : 3), long ? 5.6 : 1.7],
+        [x + side * (lute ? 9 : 3), y - (long ? 57 : 46), z + (long ? 2 : -4), long ? 4.2 : 0.12],
+      )
+      if (long) {
+        const length = lute ? (side < 0 ? 112 : 92) : silk ? (side < 0 ? 107 : 88) : 92
+        rows.push(
+          [x + side * (lute ? 5.7 : 2.0), y - 70, z + 4.0, 3.3],
+          [x + side * (lute ? 0.7 : -2), y - (70 + 0.46 * (length - 70)), z + 7.0, 1.92],
+          [x + side * (lute ? -3 : -4), y - length, z + 9.0, 0.1],
+        )
+      }
+    }
+    const normal = [side * 0.75, 0.05, 0.86]
+    // Bury the upper root of the loose lock in the brushed section.
+    for (let j = 0; j < 3; j++) {
+      rows[j][0] -= side * (3 - j) * 1.6
+      rows[j][2] -= (3 - j) * 1.8
+    }
+    hairLock(h, rows, { normal, depth: 0.19, phase: side * 0.6, card: !long })
+    for (let k = 0; k < (style === 'drummer' ? 2 : 4); k++) {
+      const lane = k % 2 ? -0.63 : 1
+      const sub = rows.slice(2).map(([x, y, z, w], j, all) => {
+        const t = j / (all.length - 1),
+          sway = Math.sin(t * 5 + k * 1.8) * t
+        return [
+          x + side * lane * (0.74 * w + 1 + 4.5 * t) + side * sway * 2.9,
+          y + (k % 2 ? -1 : 1) * (6.3 + k * 2.1) * t * t,
+          z - lane * (w * 0.63 + 1) + sway * 4.2,
+          (k < 2 ? 1.22 : 0.63) * (1 - 0.94 * t),
+        ]
+      })
+      hairLock(h, sub, { normal, depth: 0.23, phase: k + 0.6, card: true, steps: 19 })
+    }
+  }
+}
+
+// A bundle wrapped around the chignon. The helical grooves are measured on
+// the continuous surface, so the underside and the ends join the same volume.
+function dressedKnot(h, c, r, tilt, seed = 0) {
+  h.hair.grid(91, 43, (u, v) => {
+    const phi = (u - 0.5) * tau,
+      lat = (v - 0.5) * Math.PI,
+      co = Math.cos(lat)
+    const turn = 0.87 * lat + 0.23 * Math.sin(lat * 2 + seed)
+    const wrap = phi + turn,
+      grain = wrap * 6.2 + 0.48 * Math.sin(3 * wrap + lat + seed)
+    const ridge = 0.5 + 0.5 * Math.cos(grain),
+      micro = 0.5 + 0.5 * Math.cos(2.3 * grain + 0.3)
+    const rho = (0.95 + 0.075 * ridge + 0.018 * micro) * co
+    const x = r[0] * rho * Math.sin(phi),
+      y = r[1] * Math.sin(lat) + 0.07 * r[1] * co * Math.cos(phi + seed)
+    const z = r[2] * rho * Math.cos(phi)
+    const roll = h.design === 'silk' ? 6.7 * Math.sin(lat * 1.5 + 0.67) : 0
+    const p = [
+      c[0] + x * Math.cos(tilt) - y * Math.sin(tilt) + roll,
+      c[1] + x * Math.sin(tilt) + y * Math.cos(tilt),
+      c[2] + z - roll * 0.3,
+    ].map((n) => n * mm)
+    return point(
+      p,
+      [u + 0.13 * lat + 0.012 * Math.sin(grain), v],
+      blend(h.dark, h.light, 0.09 + 0.23 * ridge + 0.065 * micro + 0.055 * Math.cos(phi * 3 + lat)),
+    )
+  })
+}
+
+function tieRibbon(h, rows, colours, turn = 1) {
+  const flow = new T.CatmullRomCurve3(rows.map(([x, y, z]) => new T.Vector3(x, y, z).multiplyScalar(mm)))
+  h.metal.grid(10, 32, (u, t) => {
+    const pos = flow.getPoint(t),
+      tangent = flow.getTangent(t)
+    const na = new T.Vector3(0, 0, -1)
+    na.addScaledVector(tangent, -tangent.dot(na))
+      .normalize()
+      .applyAxisAngle(tangent, turn * Math.sin(t * 5.1 - 0.5))
+    const across = new T.Vector3().crossVectors(na, tangent)
+    const p = t * (rows.length - 1),
+      k = Math.min(rows.length - 2, Math.floor(p))
+    const w = mix(rows[k][3], rows[k + 1][3], p - k) * mm
+    pos.addScaledVector(across, (u * 2 - 1) * w).addScaledVector(na, w * 0.23 * Math.sin(u * Math.PI))
+    pos.y += Math.abs(u - 0.5) * 0.005 * smooth(0.89, 1, t)
+    return point(
+      pos.toArray(),
+      [u, t],
+      u <= 0.1 || u >= 0.9 ? colours[1] : shade(colours[0], 0.8 + 0.22 * Math.sin(u * Math.PI)),
+    )
+  })
+}
+
+// A carved flower is assembled in local millimetres. The cupped, veined
+// petals have a closed section and overlap around the stamens in two rows.
+function flower(h, frame, c, r, colours, lily = false) {
+  const layers = lily ? [5, 3] : [5, 4]
+  layers.forEach((count, layer) => {
+    for (let k = 0; k < count; k++) {
+      const a = (tau * k) / count + layer * 0.63 + 0.17
+      const direction = [Math.sin(a), Math.cos(a)]
+      const len = r * (layer ? 0.62 : 1) * (lily ? 0.94 + 0.16 * Math.cos(a - 0.4) : 1)
+      const pigment = blend(colours[0], colours[1], 0.15 + 0.52 * layer + 0.17 * Math.sin(a + 0.2))
+      h.metal.grid(12, 11, (u, t) => {
+        const phi = tau * u,
+          breadth = len * (lily ? 0.245 : 0.39) * Math.sin(t * Math.PI) ** 0.65 * (0.6 + 0.75 * t)
+        const lateral = breadth * Math.sin(phi)
+        const zone = 0.71 + 0.24 * Math.sin(a + 0.5)
+        const axial = len * t * zone
+        const flare =
+          len * (0.39 * t * t + 0.12 * Math.sin(t * Math.PI) + 0.085 * Math.cos(phi) * Math.sin(t * Math.PI))
+        const x = c[0] + direction[0] * axial + direction[1] * lateral
+        const y = c[1] + direction[1] * axial - direction[0] * lateral
+        const colour = blend(pigment, colours[1], 0.23 * t * t + 0.12 * Math.cos(phi) ** 2 * t)
+        return point(
+          frame(x * mm, y * mm, (c[2] + layer * 0.7 + flare) * mm),
+          [u, t],
+          shade(colour, 0.69 + 0.3 * t + 0.14 * Math.max(0, Math.cos(phi))),
+        )
+      })
+    }
+  })
+  const gold = tint(0xcfac69)
+  for (let k = 0; k < 6; k++) {
+    const a = (k * tau) / 6,
+      rr = r * 0.135
+    bead(
+      h.metal,
+      frame((c[0] + Math.sin(a) * rr) * mm, (c[1] + Math.cos(a) * rr) * mm, (c[2] + r * 0.32) * mm),
+      mm * r * 0.065,
+      gold,
+      1.25,
+    )
+  }
+  bead(h.metal, frame(c[0] * mm, c[1] * mm, (c[2] + r * 0.34) * mm), mm * r * 0.14, colours[1], 1.16)
+}
+function silkCoiffure(h) {
+  const gold = tint(0xae8557),
+    lip = tint(0xd5b78b),
+    jade = tint(0x91b7a4),
+    ivory = tint(0xf5ebce)
+  dressedKnot(h, [-10, 233, -64], [45, 42, 39], -0.37, 1.7)
+  // The hair is folded through the back of the roll like wide satin.
+  // Most of each turn is buried, leaving a crease and a soft lifted crest.
+  hairLock(
+    h,
+    [
+      [28, 202, -72, 3],
+      [29, 223, -80, 10],
+      [22, 248, -78, 15],
+      [9, 263, -70, 16],
+      [-11, 270, -63, 14],
+      [-30, 264, -60, 11],
+      [-40, 250, -66, 8],
+      [-38, 232, -78, 2],
+    ],
+    { normal: [0.17, 0.2, 1], depth: 0.24, phase: 0.4 },
+  )
+  hairLock(
+    h,
+    [
+      [-33, 206, -75, 3],
+      [-44, 222, -82, 10],
+      [-39, 241, -91, 14],
+      [-24, 253, -95, 14],
+      [-3, 253, -97, 11],
+      [14, 243, -94, 8],
+      [21, 225, -83, 2],
+    ],
+    { normal: [-0.15, 0.18, -1], depth: 0.25, phase: 2 },
+  )
+  hairLock(
+    h,
+    [
+      [23, 198, -78, 2],
+      [18, 209, -91, 8],
+      [1, 221, -101, 11],
+      [-17, 232, -105, 12],
+      [-32, 243, -96, 9],
+      [-38, 251, -81, 3],
+    ],
+    { normal: [0, 0.15, -1], phase: 3.2, depth: 0.23 },
+  )
+  const mount = atLevel(h, -1.05, 0.191, 0.0043)
+  const frame = jewelleryFrame(mount, [-0.55, 0.23, 0.81])
+  winding(
+    h,
+    [frame(-0.018, -0.004), mount, [-0.035, 0.215, -0.053], [0.016, 0.236, -0.071], [0.052, 0.248, -0.074]],
+    (t) => 0.00055 + 0.00143 * Math.sin(Math.PI * (0.06 + 0.9 * t)),
+    gold,
+  )
+  bead(h.metal, [0.052, 0.248, -0.074], 0.00225, jade, 1.16)
+  const stem = [
+    [-0.017, -0.012],
+    [-0.01, -0.006],
+    [-0.004, -0.002],
+    [0.004, 0.006],
+    [0.013, 0.011],
+  ]
+  winding(
+    h,
+    stem.map(([x, y]) => frame(x, y, 0.001)),
+    0.00077,
+    gold,
+  )
+  flower(h, frame, [1, 4, 1], 16.0, [jade, ivory], true)
+  flower(h, frame, [-11, -3, 0.8], 7.8, [tint(0xa0b9aa), ivory], true)
+  for (const [x, y, dx, dy] of [
+    [-0.014, -0.008, -0.009, -0.003],
+    [-0.007, -0.004, -0.006, 0.009],
+    [0.006, 0.007, 0.011, 0.006],
+  ]) {
+    petal(h.metal, frame, [x, y, 0.0004], [dx, dy], 0.0024, jade, 0.001)
+    winding(
+      h,
+      [
+        frame(x, y, 0.0014),
+        frame(x + dx * 0.55, y + dy * 0.49, 0.002),
+        frame(x + dx * 0.93, y + dy * 0.95, 0.0018),
+      ],
+      0.00028,
+      lip,
+    )
+  }
+  for (const [j, drop] of [0.039, 0.052, 0.027].entries()) {
+    const x = -0.01 + 0.004 * j
+    const strand = (t) =>
+      frame(x + 0.0021 * Math.sin(t * 3.4 + j * 0.6), -0.004 - drop * t, 0.0014 + 0.0015 * t)
+    winding(h, [0, 0.3, 0.6, 1].map(strand), 0.00032, gold)
+    for (const t of [0.2, 0.37, 0.64, 0.84]) bead(h.metal, strand(t), 0.00072, lip)
+    bead(h.metal, strand(0.94), 0.0013, jade)
+    bead(h.metal, strand(1), 0.0021, ivory, 1.46)
+  }
+}
+
+function luteCoiffure(h) {
+  const gold = tint(0xb99663),
+    shell = tint(0xe9b5a8),
+    pink = tint(0xa96872),
+    leaf = tint(0x5b8480)
+  dressedKnot(h, [-8, 113, -101], [41, 32, 35], -0.35, 0.3)
+  hairLock(
+    h,
+    [
+      [32, 152, -77, 3],
+      [31, 133, -95, 8],
+      [20, 118, -122, 12],
+      [-1, 109, -135, 14],
+      [-23, 101, -132, 12],
+      [-37, 108, -120, 7],
+      [-39, 119, -106, 1],
+    ],
+    { normal: [0.04, 0.2, -1], depth: 0.2, phase: 2.1 },
+  )
+  hairLock(
+    h,
+    [
+      [-39, 139, -85, 4],
+      [-48, 128, -103, 8],
+      [-45, 111, -119, 11],
+      [-32, 96, -125, 13],
+      [-7, 91, -123, 10],
+      [15, 97, -118, 5],
+      [23, 105, -107, 0.7],
+    ],
+    { normal: [-0.16, 0.1, -1], depth: 0.22 },
+  )
+  // The end doubles under its own knot. Three loose sections escape down
+  // the nape in progressively tighter curves, a counterweight to the flowers.
+  for (let k = 0; k < 3; k++) {
+    const d = k - 1
+    hairLock(
+      h,
+      [
+        [-24 + 5 * d, 103, -117, 4],
+        [-36 + 5 * d, 83, -126 + d * 2, 6.7],
+        [-39 + 6 * d, 62, -122 + d * 2, 7.5],
+        [-42 + 7 * d, 34, -104 + d * 3, 7.0],
+        [-49 + 6 * d, 5, -96 + d * 3, 5.5],
+        [-56 + 6 * d, -21 + d * 11, -88 + d * 4, 3.1],
+        [-62 + 5 * d, -46 + d * 14, -84 + d * 5, 0.13],
+      ],
+      { normal: [-0.45, 0, -1], depth: 0.28, phase: k + 0.9 },
+    )
+  }
+  const base = atLevel(h, -1.74, 0.159, 0.0036)
+  const frame = jewelleryFrame(base, [-0.87, 0.19, 0.5])
+  winding(
+    h,
+    [frame(-0.043, -0.015), frame(-0.01, -0.004), frame(0.009, 0.005), frame(0.019, 0.013)],
+    0.00104,
+    gold,
+  )
+  for (const [x, y, dx, dy] of [
+    [-0.012, -0.002, -0.01, 0.005],
+    [0.005, 0.005, 0.009, -0.005],
+    [0.012, 0.009, 0.012, 0.009],
+    [-0.015, -0.005, -0.007, -0.007],
+  ]) {
+    petal(h.metal, frame, [x, y, 0.0002], [dx, dy], 0.003, leaf, 0.0013)
+  }
+  flower(h, frame, [0, 3, 1.2], 13.2, [pink, shell])
+  flower(h, frame, [-13, -4, 0], 7.9, [shell, tint(0xf4dbc8)])
+  flower(h, frame, [12, 11, 0.1], 5.2, [pink, shell])
+  for (const [idx, dy] of [0.035, 0.027].entries()) {
+    const x = -0.012 + 0.004 * idx
+    const points = [
+      frame(x, -0.003, 0.001),
+      frame(x - 0.0015, -dy * 0.6, 0.0035),
+      frame(x + 0.0012, -dy, 0.0048),
+    ]
+    winding(h, points, 0.00035, gold)
+    bead(h.metal, points[1], 0.00136, shell)
+    bead(h.metal, points[2], 0.00215, leaf, 1.54)
+  }
+}
+
+function scholarCoiffure(h) {
+  const ink = tint(0x445968),
+    edge = tint(0xa29d83),
+    pale = tint(0x97ad9f),
+    gold = tint(0xc1a77a)
+  dressedKnot(h, [2, 235, -44], [25, 29, 28], -0.06, 0.6)
+  hairLock(
+    h,
+    [
+      [-19, 223, -40, 2],
+      [-21, 244, -47, 7],
+      [-8, 257, -56, 9],
+      [9, 257, -56, 9],
+      [21, 246, -49, 6],
+      [18, 230, -40, 2],
+    ],
+    { normal: [0, 0.33, -1], depth: 0.39 },
+  )
+  // The fall is broadest just below the binding. The centre and side
+  // sections taper on different beats so the tail has a broken silhouette.
+  hairLock(
+    h,
+    [
+      [2, 236, -59, 5],
+      [6, 222, -80, 14],
+      [12, 193, -101, 19],
+      [17, 154, -113, 21],
+      [13, 106, -124, 21],
+      [7, 59, -129, 19],
+      [7, 15, -137, 16],
+      [12, -20, -140, 10],
+      [23, -55, -136, 4],
+      [30, -73, -130, 0.13],
+    ],
+    { normal: [0.07, 0.06, -1], depth: 0.57, phase: 0.6 },
+  )
+  for (let k = 0; k < 5; k++) {
+    const d = k - 2
+    hairLock(
+      h,
+      [
+        [3 + d * 3, 239, -57, 4],
+        [5 + d * 4, 227, -77, 7.7],
+        [10 + d * 5, 200, -96 - d * d, 8.4],
+        [15 + d * 6, 163, -111 + d * d, 8.7],
+        [14 + d * 7.2, 117, -120 + d * d * 1.1, 8.3],
+        [8 + d * 8.1, 70, -127 + d * d * 1.4, 7.7],
+        [5 + d * 7.5, 22, -136 + d * d, 6.9],
+        [9 + d * 6.9, -18 + d * 3, -140 + d * d, 5.1],
+        [20 + d * 6.6, -54 + d * 6, -138 + d * d, 2.9],
+        [29 + d * 6.0, -78 + d * 8, -129 + d * d, 0.12],
+      ],
+      { normal: [0.06, 0.02, -1], depth: 0.23, phase: k * 1.61, twist: 0.53 },
+    )
+  }
+  ring(h, [0.002, 0.235, -0.043], 0.027, 0.029, 0.014, [ink, edge], -0.0026, 12)
+  ring(h, [0.002, 0.239, -0.043], 0.0275, 0.0295, 0.0029, [ink, pale], -0.003)
+  winding(
+    h,
+    [
+      [-0.045, 0.233, -0.04],
+      [-0.024, 0.234, -0.041],
+      [0.018, 0.237, -0.043],
+      [0.044, 0.24, -0.045],
+    ],
+    (t) => 0.00065 + 0.001 * Math.sin(Math.PI * t),
+    gold,
+  )
+  bead(h.metal, [0.044, 0.24, -0.045], 0.00265, pale, 1.08)
+  for (const s of [-1, 1]) {
+    const rows = [
+      [s * 16, 237, -62, 2.7],
+      [s * 24, 229, -74, 3.1],
+      [s * 24 + 3, 202, -96, 3.3],
+      [s * 27 + 12, 161, -112, 3.6],
+      [s * 30 + 13, 119, -119, 3.5],
+      [s * 31 + 13, 82, -129, 3.5],
+      [s * 32 + 7, 58 + s * 8, -134, 3.3],
+    ]
+    tieRibbon(h, rows, [ink, edge], 0.86 * s)
+  }
+  const frame = jewelleryFrame([0.002, 0.236, -0.0132], [0, 0.19, 1])
+  petal(h.metal, frame, [0, -0.004, 0], [0, 0.011], 0.0035, pale, 0.0009)
+  for (const s of [-1, 1])
+    winding(
+      h,
+      [
+        frame(0, 0.007, 0.0007),
+        frame(s * 0.006, 0.004),
+        frame(s * 0.009, 0),
+        frame(s * 0.004, -0.003),
+        frame(0, -0.0045),
+      ],
+      0.00045,
+      gold,
+    )
+  // A jade slip is held in the silk by a fine pierced cloud at either side.
+  for (const side of [-1, 1]) {
+    const spiral = [
+      [side * 0.001, 0.008],
+      [side * 0.005, 0.012],
+      [side * 0.01, 0.0125],
+      [side * 0.015, 0.009],
+      [side * 0.014, 0.005],
+      [side * 0.0105, 0.004],
+      [side * 0.009, 0.007],
+    ]
+    winding(
+      h,
+      spiral.map(([x, y]) => frame(x, y, 0.0013)),
+      0.0006,
+      gold,
+    )
+  }
+  petal(h.metal, frame, [0, 0.002, 0.0015], [0, 0.014], 0.0033, pale, 0.0011)
+}
+function drummerCoiffure(h) {
+  const wine = tint(0x752e33),
+    gold = tint(0xc79962)
+  dressedKnot(h, [3, 226, -47], [27, 24, 29], -0.14, 1.8)
+  hairLock(
+    h,
+    [
+      [2, 233, -56, 3],
+      [10, 238, -77, 12],
+      [18, 222, -97, 15],
+      [24, 196, -113, 15],
+      [23, 166, -124, 13],
+      [28, 138, -134, 9],
+      [39, 120, -138, 4],
+      [49, 110, -133, 0.15],
+    ],
+    { normal: [0.24, 0.07, -1], depth: 0.61, phase: 1.5 },
+  )
+  for (let k = 0; k < 5; k++) {
+    const d = k - 2
+    hairLock(
+      h,
+      [
+        [2 + 3 * d, 232, -55, 3],
+        [9 + d * 4, 241, -72, 7.3],
+        [18 + d * 5, 226, -95, 7.3],
+        [24 + d * 5, 198, -110 + d * 2, 8.3],
+        [21 + d * 5.5, 169 + d * 2, -122 + d * 1.6, 7.3],
+        [25 + d * 6, 139 + d * 3, -131 + d * 1.8, 5.2],
+        [39 + d * 5.7, 119 + d * 5, -136 + d * 3, 2.8],
+        [48 + d * 5, 113 + d * 7, -132 + d * 5, 0.18],
+      ],
+      {
+        normal: [0.25, 0.1, -1],
+        phase: k * 1.3,
+        depth: 0.43,
+        twist: 0.65,
+        sheen: k === 0 || k === 3 ? tint(0x9a7865) : h.light,
+      },
+    )
+  }
+  for (let j = 0; j < 5; j++) {
+    const d = j - 2
+    hairLock(
+      h,
+      [
+        [-4 + d * 2, 231, -61, 0.5],
+        [14 + d * 4, 242, -82, 1.05],
+        [29 + d * 4, 217, -105, 1.1],
+        [33 + d * 4, 187, -125, 0.8],
+        [24 + d * 7, 163, -132, 0.7],
+        [20 + d * 7, 145 + d * 8, -137, 0.06],
+      ],
+      { normal: [0.5, 0.13, -1], card: true, phase: j },
+    )
+  }
+  // One narrow, gold-edged cord emerges from the binding and follows the
+  // outside of the ponytail. Its two faces read even against the backlit boat.
+  const cord = [
+    [5, 234, -61, 1.3],
+    [7, 241, -74, 1.6],
+    [12, 229, -92, 1.8],
+    [20, 211, -107, 1.85],
+    [24, 186, -121, 1.85],
+    [21, 162, -132, 1.65],
+    [25, 144, -141, 1.5],
+    [32, 131, -143, 1.3],
+    [41, 119, -143, 0.95],
+    [48, 113, -137, 0.35],
+  ]
+  h.sections = new Map()
+  for (const guide of cord) {
+    const [x, y] = guide,
+      sections = hairSlice(h, y * mm)
+    let far = guide[2] * mm
+    for (let k = 0; k < sections.length; k += 4) {
+      const [x0, z0, x1, z1] = [sections[k], sections[k + 1], sections[k + 2], sections[k + 3]]
+      if (x0 < x * mm === x1 < x * mm || x1 === x0) continue
+      const z = mix(z0, z1, (x * mm - x0) / (x1 - x0))
+      far = Math.min(far, z)
+    }
+    guide[2] = far / mm - 0.95
+  }
+  tieRibbon(h, cord, [tint(0xb46351), tint(0xe7bb7d)], 0.28)
+  ring(h, [0.001, 0.232, -0.047], 0.0273, 0.026, 0.011, [wine, gold], 0.003, 8)
+  ring(h, [0.003, 0.237, -0.048], 0.026, 0.026, 0.0035, [wine, gold], 0.002, 8)
+}
+
+// Forehead sections use millimetres along the skin and across the head.
+// Constructing each edge on the forehead avoids the lash-like hard end of
+// a thick tube seen in a frontal close-up.
+function foldTemples(h) {
+  const style = h.design
+  const part = { silk: -0.38, lute: 0.16, scholar: -0.43, drummer: 0.28 }[style]
+  if (style === 'drummer') return
+  h.sections = new Map()
+  cacheHairSlices(h, 128, 403)
+  for (const side of [-1, 1]) {
+    const heavy = part * side < 0
+    const y = style === 'scholar' ? 8 : style === 'lute' ? -2 : 0
+    const skirt = style === 'scholar' ? 8 : style === 'lute' ? -7 : 0
+    // Two thick sections turn together. Their part is narrow, while the
+    // lower border of the larger section arcs down onto the temple.
+    const guides = [
+      [part + side * 0.07, 207, 1.3],
+      [part + side * 0.14, 192 + y, 5.1],
+      [mix(part, side * 0.68, 0.58), heavy ? 175 + y : 181 + y, heavy ? 9.8 : 7.3],
+      [side * (heavy ? 0.6 : 0.69), heavy ? 159 + y : 167 + y, heavy ? 11.8 : 8.6],
+      [side * 0.88, 147 + skirt, 9.2],
+      [side * 1.02, 133 + skirt, 7.4],
+      [side * 1.15, 114 + skirt, 3.2],
+      [side * 1.18, 104 + skirt, 0.2],
+    ]
+    const rake = guides.map(([a, y, w]) => new T.Vector3(a * 78, y, w))
+    const curve = new T.CatmullRomCurve3(rake, false, 'catmullrom', 0.38)
+    for (let k = 0; k < 2; k++) {
+      h.hair.grid(13, 32, (u, v) => {
+        const t = k === 1 ? 0.11 + 0.89 * v : v
+        const c = curve.getPoint(t),
+          d = curve.getTangent(t)
+        const den = Math.hypot(d.x, d.y),
+          arc = Math.sin(t * Math.PI)
+        const lane = k === 1 ? (u - 0.5) * 1.04 + 0.6 : u * 2 - 1
+        const w = c.z * lane,
+          theta = (c.x - (side * w * d.y) / den) / 78
+        const yy = (c.y + (side * w * d.x) / den + (k === 1 ? 1.8 * arc : 0)) * mm
+        const crest = Math.sin(u * Math.PI) ** 0.8
+        const bulge = (k === 1 ? 1.35 : 2.2) * crest * envelope(v)
+        const bury = 2.7 * (1 - smooth(0.06, 0.38, v)) + 0.55 * (1 - crest)
+        const out = (k === 0 ? -0.15 + bulge + 0.32 * arc - bury : 0.48 + 0.67 * bulge - bury) * mm
+        const q = atLevel(h, theta, yy, out)
+        const stripe = 0.5 + 0.5 * Math.sin((u * 4.5 + 0.1 * Math.cos(v * 6 + side)) * tau)
+        return point(
+          q,
+          [0.05 + 0.26 * u + 0.005 * Math.sin(t * 5 + side), t],
+          blend(h.dark, h.light, 0.12 + 0.11 * crest + 0.065 * stripe + 0.085 * bell(v - 0.33, 0.17)),
+        )
+      })
+    }
+  }
+}
+function looseNape(h) {
+  const style = h.design
+  for (const side of [-1, 1]) {
+    const long = style === 'silk' || (style === 'lute' && side > 0)
+    const end = long ? (style === 'silk' ? -40 + side * 8 : -27) : 36
+    const lift = side < 0 ? 4 : -3
+    const start = hairAt(h, side * 2.02, 0.121, 0.001).map((x) => x / mm)
+    const root = hairAt(h, side * 2.13, 0.078, 0.0015).map((x) => x / mm)
+    const guides = [
+      [...start, 1.4],
+      [side * 67, 102, -62, 5.7],
+      [...root, 7.2],
+      [side * 55, 55, -67, 6.2],
+      [side * 49, 40 + lift, -65, 4.5],
+    ]
+    if (long)
+      guides.push(
+        [side * 47, 18, -67, 3.6],
+        [side * 50, -4, -66, 2.3],
+        [side * 58, end + 7, -61, 0.93],
+        [side * 62, end, -60, 0.07],
+      )
+    else {
+      const tucked = hairAt(h, side * 2.09, 0.061, 0.002).map((n) => n / mm)
+      const tip = hairAt(h, side * 2.14, 0.054, 0.0017).map((n) => n / mm)
+      guides.splice(3, 2, [...tucked, 2.9], [...tip, 0.08])
+    }
+    hairLock(h, guides, { normal: [side * 0.72, -0.1, -0.74], depth: 0.29, phase: 0.74 + side })
+    for (let k = 0; k < 3; k++) {
+      const split = guides.slice(2).map(([x, y, z, w], j, a) => {
+        const t = j / (a.length - 1),
+          sw = Math.sin(t * 4.2 + k) * t
+        return [
+          x + side * (w * (k - 0.9) * 0.67 + sw * 4),
+          y - (5.5 + 2 * k) * t,
+          z + w * (k - 0.9) * 0.43 + sw * 3,
+          0.92 * (1 - 0.94 * t),
+        ]
+      })
+      hairLock(h, split, { normal: [side * 0.66, 0.0, -0.75], depth: 0.24, card: true, steps: 14 })
+    }
+  }
 }

@@ -1,5 +1,12 @@
 import * as T from 'three'
 import { poseLandmark, posePeriod } from './humanPose.js'
+import {
+  pipaFingerOffset,
+  pipaFingerRotation,
+  pipaWristRotation,
+  portraitPerformance,
+  stridePeriod,
+} from './characterActing.js'
 import { handGrip } from './humanRig.js'
 import { fittedPipa } from './characterPropPipaRest.js'
 import { portraitMouth } from './characterPortrait.js'
@@ -132,8 +139,18 @@ export function buildEquipment(profile, rig, job) {
       l = held('l', 'grip', 0.0118)
     updates.push((state, ph) => {
       cover.position.copy(shoulder(state, 'l', 0)).add(a.set(0.048, -0.247, 0.189).multiplyScalar(h))
-      cover.position.z += 0.024 * Math.sin(ph)
-      cover.rotation.set(-0.117 + 0.019 * Math.cos(ph), 0.03 * Math.sin(ph), 0.198 + 0.027 * Math.sin(ph))
+      const acting = portraitPerformance(profile, state)
+      const step = acting && state.walking
+        ? (tau * (state.t ?? 0)) / stridePeriod(profile) + (state.phase ?? 0)
+        : ph
+      const load = acting?.body ?? 0
+      cover.position.x += h * 0.022 * load
+      cover.position.z += 0.024 * Math.sin(step) + h * 0.021 * load
+      cover.rotation.set(
+        -0.117 + 0.019 * Math.cos(step),
+        0.03 * Math.sin(ph) - 0.083 * load,
+        0.198 + 0.027 * Math.sin(step) - 0.067 * load,
+      )
       bind(l, cover, origin)
     })
   } else if (job === 'lantern' || job === 'watch' || job === 'basket') {
@@ -266,7 +283,12 @@ export function buildEquipment(profile, rig, job) {
       for (let i = 0; i < 2; i++) {
         const s = i ? -1 : 1,
           theta = ph * 2 + i * Math.PI,
-          lift = 0.5 - 0.5 * Math.cos(theta)
+          beat = T.MathUtils.euclideanModulo(theta / tau, 1)
+        // A practiced stroke bounces early, pauses at the top and comes down
+        // swiftly. The moment of impact stays fixed on the drum's real skin.
+        const lift = profile.design === 'drummer'
+          ? T.MathUtils.smoothstep(beat, 0, 0.36) - T.MathUtils.smoothstep(beat, 0.65, 1)
+          : 0.5 - 0.5 * Math.cos(theta)
         const g = handles[i],
           stick = mallets[i]
         if (fixture) {
@@ -314,12 +336,16 @@ export function buildEquipment(profile, rig, job) {
       ),
       normalGrip = new T.Vector3(...handGrip),
       melody = [2, 1, 3, 2, 0, 1],
-      frettingRotation = new T.Quaternion().setFromEuler(new T.Euler(-0.2, -0.6, -0.3, 'ZXY')),
+      leftHand = rig.bones.lHand.getObjectByName('左手'),
+      refitted = profile.id === 9 && (!leftHand || leftHand.userData.reseatedFret),
+      frettingRotation = refitted
+        ? new T.Quaternion(...pipaWristRotation)
+        : new T.Quaternion().setFromEuler(new T.Euler(-0.2, -0.6, -0.3, 'ZXY')),
       frettingAxis = up.clone().applyQuaternion(frettingRotation),
       frettingForward = front.clone().applyQuaternion(frettingRotation),
-      indexPad = new T.Vector3(0.007, -0.049, 0.0472),
-      stoppingOffset = new T.Vector3()
-    const leftHand = rig.bones.lHand.getObjectByName('左手')
+      indexPad = new T.Vector3(0.007, -0.049, 0.0472)
+    if (refitted && !leftHand)
+      indexPad.applyQuaternion(new T.Quaternion(...pipaFingerRotation)).add(v.fromArray(pipaFingerOffset))
     if (leftHand) {
       const [start, end] = leftHand.userData.distalSkin[0]
       let frontmost = Infinity
@@ -332,7 +358,9 @@ export function buildEquipment(profile, rig, job) {
         }
       }
     }
-    stoppingOffset.copy(normalGrip).sub(indexPad).applyQuaternion(frettingRotation)
+    // A stopped string bears on the index pulp. Use the measured pad as the
+    // hand-local socket so the solved contact stays on the rendered string.
+    l.localContact = indexPad
     grips.pluckPoint = new T.Vector3()
     r.elbowPole = new T.Vector3(-0.66, 0, 1.5)
     l.elbowPole = new T.Vector3(0.6, -1.2, 1.6)
@@ -340,7 +368,7 @@ export function buildEquipment(profile, rig, job) {
       seatInstrument(state, grips, ph)
       pipaStringPoint(2, 0.544 + 0.007 * Math.sin(ph), a)
       a.z += 0.000996
-      bind(l, lute, a.add(stoppingOffset), frettingAxis, frettingForward)
+      bind(l, lute, a, frettingAxis, frettingForward)
       // Two alternating digits play six strokes across all four silk strings.
       // The point on the touching pad, not the wrist origin, follows the silk.
       const beat = (3 * ph) / Math.PI,
@@ -371,15 +399,28 @@ export function buildEquipment(profile, rig, job) {
     const { fan, tassel } = scholarFan(m),
       r = held('r', 'fan', fanGripRadius)
     owner(fan)
-    updates.push((state, ph) => {
-      const step = Math.sin(ph),
-        lift = Math.cos(ph)
-      fan.rotation.set(0.207 + 0.051 * step, -0.19 + 0.078 * Math.sin(ph - 0.37), 0.219 + 0.047 * lift, 'YXZ')
+    updates.push((state) => {
+      const acting = portraitPerformance(profile, state)
+      const footfall = tau * (state.t ?? 0) / stridePeriod(profile) + (state.phase ?? 0)
+      const step = Math.sin(footfall), lift = Math.cos(footfall)
+      // The leaf travels with the ribs. He lowers the wrist and tips the
+      // paper away from his eyes as his attention rises to street level.
+      const lower = acting ? 0.55 * acting.turn + 0.45 * acting.body : 0
+      fan.rotation.set(
+        0.226 + 0.039 * step + 0.148 * lower,
+        -0.178 + 0.058 * Math.sin(footfall - 0.37) - 0.19 * lower,
+        0.224 + 0.041 * lift + 0.104 * lower,
+        'YXZ',
+      )
       fan.position
         .copy(shoulder(state, 'r', 0))
-        .add(a.set(-0.034 + 0.009 * step, -0.286 + 0.012 * lift, 0.231 + 0.035 * step).multiplyScalar(h))
+        .add(a.set(
+          -0.005 - 0.056 * lower + 0.008 * step,
+          -0.244 - 0.111 * lower + 0.01 * lift,
+          0.253 + 0.043 * lower + 0.026 * step,
+        ).multiplyScalar(h))
         .sub(v.copy(fanGrip).applyQuaternion(fan.quaternion))
-      neutral.rotation.set(0.046 + 0.108 * Math.sin(ph - 0.62), 0, -0.038 + 0.058 * lift)
+      neutral.rotation.set(0.046 + 0.10 * Math.sin(footfall - 0.62), 0, -0.038 + 0.058 * lift)
       tassel.quaternion.copy(fan.quaternion).invert().multiply(neutral.quaternion)
       bind(r, fan, fanGrip)
     })

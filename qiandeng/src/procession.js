@@ -50,6 +50,7 @@ export function procession(scene, m, world) {
     lamps: [],
   }))
   world.rainShips = ships
+  world.deckLanterns = ships.flatMap((ship) => ship.deckLanterns)
   for (const [i, offset, color, power, range] of [
     [0, [0, 2.75, 0.7], 0xff8c3a, 11.2, 11],
     [0, [0, 1.68, -4.05], 0xff9e49, 4.3, 7],
@@ -57,6 +58,7 @@ export function procession(scene, m, world) {
     [4, [0, 1.89, 0.48], 0xffa55b, 5.6, 8],
   ]) {
     const light = world.movingLamp(0, 0, 0, color, power, range)
+    light.distantOnly = ships[i].deckLanterns.length > 0
     ships[i].lamps.push({ light, offset: new T.Vector3(...offset) })
   }
   const surface = wakes(scene, traffic),
@@ -103,6 +105,8 @@ export function procession(scene, m, world) {
       }
       g.updateMatrixWorld()
       s.inverse.copy(g.matrixWorld).invert()
+      for (const lantern of s.deckLanterns)
+        lantern.position.copy(lantern.offset).applyMatrix4(g.matrixWorld)
       for (const item of s.lamps) {
         item.light.position.copy(item.offset).applyMatrix4(g.matrixWorld)
         item.light.strength = day ? 0.028 : 1 + 0.035 * Math.sin(t * 3.61 + i)

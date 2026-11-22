@@ -5,6 +5,7 @@ import { Mason } from './mesh.js'
 import { materials } from './kit.js'
 import { stations, updateLens } from './stations.js'
 import { lightRegistry, lightCity } from './lighting.js'
+import { characterStreetLight } from './characterStreetLight.js'
 import { navigation } from './walk.js'
 import { courtyardCollision } from './collision.js'
 import { river } from './river.js'
@@ -142,7 +143,8 @@ async function openCity() {
   )
   const detail = scenicDetail(statics)
   world.characterFloor = (x, z, nominalY) => collision.floor(x, z, nominalY + 0.085, 0.195) ?? nominalY
-  world.shadeCharacter = (group) => lighting.shade(group, false, software, false)
+  const portraitLight = characterStreetLight(renderer, world, lighting.common)
+  world.shadeCharacter = portraitLight.shade
   lighting.shade(statics, software)
   lighting.shade(moving, false, software)
   const cinema = film(renderer, scene, statics, camera, software, lighting.common),
@@ -181,7 +183,6 @@ async function openCity() {
     air.mode(day)
     for (const surface of waters) surface.invalidate()
   }
-  addEventListener('resize', resize)
   scene.addEventListener('sky-painted', () => {
     for (const surface of waters) surface.invalidate()
   })
@@ -205,15 +206,22 @@ async function openCity() {
     if (!subject) return
     if (params.has('light')) mode(params.get('light') === 'day')
     const vertical = new T.Vector3(0, 1, 0)
-    const { focus, forward } = subject
+    const { focus, forward, job } = subject
+    // The seated musician plays across the lap. Give the neck of the pipa
+    // room at the edge and choose the open side of the moving pavilion.
+    const portraits = {
+      umbrella: { angles: [.42, -.37], distance: 1.40, lift: .065 },
+      lute: { angles: [-.39, .95], distance: 1.31, lift: .045 },
+      scholar: { angles: [-.37, .46], distance: 1.46, lift: .075 },
+      drum: { angles: [-.54, .39], distance: 1.46, lift: .065 },
+    }
+    const portrait = portraits[subject.design] ?? portraits[job] ?? { angles: [.39, -.48], distance: 1.74, lift: .09 }
+    focus.y += job === 'lute' ? .045 : .038
     const start = focus.clone()
-    // The walkways are narrow. Try the two three-quarter views first, then
-    // turn around the sitter until a swept camera reaches open space.
-    let eye = start,
-      best = 0
-    for (const angle of [0.39, -0.48, 0.93, -1, 1.65, -1.68, 2.65]) {
-      const offset = forward.clone().applyAxisAngle(vertical, angle).multiplyScalar(2.16)
-      offset.y += 0.16
+    let eye = start, best = 0
+    for (const angle of [...portrait.angles, .83, -.93, 1.35, -1.45, 2.65]) {
+      const offset = forward.clone().applyAxisAngle(vertical, angle).multiplyScalar(portrait.distance)
+      offset.y += portrait.lift
       const sample = start.clone()
       collision.move(sample, offset.x, offset.y, offset.z)
       const distance = sample.distanceTo(start)
@@ -221,7 +229,7 @@ async function openCity() {
         eye = sample
         best = distance
       }
-      if (best >= 2.12) break
+      if (best >= portrait.distance - .035) break
     }
     if (best > 0.33) {
       walk.arrive(eye.toArray(), focus.toArray())
@@ -239,6 +247,7 @@ async function openCity() {
     cliffs.update(t, day)
     air.update(t, day)
     lighting.update(t)
+    const sitter = portraitLight.update(t, camera)
     gears.update()
     if (
       fleet.protect(camera.position, collision.clearance) ||
@@ -251,6 +260,7 @@ async function openCity() {
       camera.far = far
       camera.updateProjectionMatrix()
     }
+    cinema.focus(sitter)
     if (software) {
       const now = performance.now(),
         moved = !lastEye.equals(camera.position) || lastRotation.angleTo(camera.quaternion) > 0.0001
@@ -276,8 +286,6 @@ async function openCity() {
     if (started && !pinned && !document.hidden) elapsed += Math.min(0.23, Math.max(0, now - last) / 1000)
     started = true
     if (!pinned) {
-      walk.step(now)
-      draw(elapsed)
       if (document.documentElement.dataset.ready && !document.hidden) {
         const dt = now - last
         if (dt < 3500) {
@@ -288,15 +296,18 @@ async function openCity() {
           const avg = total / measure
           if (avg > 54 && quality > (software ? 0.62 : 0.69)) {
             quality = Math.max(software ? 0.62 : 0.69, quality - 0.085)
-            resize()
           } else if (avg < 24 && quality < 0.99) {
             quality = Math.min(1, quality + 0.045)
-            resize()
           }
           measure = 0
           total = 0
         }
       }
+      // Resizing clears the WebGL drawing buffer. Present a complete city
+      // frame at the new size before the browser gets to composite the canvas.
+      resize()
+      walk.step(now)
+      draw(elapsed)
       if (!document.documentElement.dataset.ready) {
         document.documentElement.dataset.ready = 'true'
         root.setAttribute('aria-busy', 'false')

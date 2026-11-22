@@ -34,13 +34,16 @@ export function finishes(profile, job) {
       metalness: 0.55,
     })
   const m = { matte, metal }
-  if (job === 'umbrella')
-    m.parasol = new T.MeshStandardMaterial({
-      ...common,
-      name: '手绘梅枝燕影油纸',
-      roughness: 0.64,
-      map: umbrellaPainting(profile.design === 'silk' ? 3 : Math.abs(profile.id ?? 0) % 3),
+  if (job === 'umbrella') {
+    const variant = profile.design === 'silk' ? 3 : Math.abs(profile.id ?? 0) % 3
+    m.parasol = new T.MeshPhysicalMaterial({
+      ...common, side: T.FrontSide, name: '上层桐油梅枝双燕', roughness: .55,
+      clearcoat: .21, clearcoatRoughness: .36, map: umbrellaPainting(variant),
     })
+    m.lining = new T.MeshStandardMaterial({
+      ...common, side: T.FrontSide, name: '内层竹纸透墨', roughness: .86, map: umbrellaPainting(variant, true),
+    })
+  }
   if (job === 'lantern' || job === 'watch')
     m.glow = new T.MeshStandardMaterial({
       ...common,

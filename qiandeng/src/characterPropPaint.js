@@ -14,9 +14,26 @@ const rgb = (hex) => [
 ]
 // An ink painting in whole-canopy coordinates: branches continue across the
 // seams; the paper has radial shade, fine woven fibres and a vermilion seal.
-export function umbrellaPainting(variant = 0) {
+export function umbrellaPainting(variant = 0, lining = false) {
   const s = variant % schemes.length
-  if (maps.has(s)) return maps.get(s)
+  const key = 2 * s + Number(lining)
+  if (maps.has(key)) return maps.get(key)
+  if (lining) {
+    const front = umbrellaPainting(variant)
+    const { data, width, height } = front.image
+    const under = new Uint8Array(data)
+    const rawPaper = [223, 203, 159]
+    for (let i = 0; i < under.length; i += 4) {
+      const x = i / 4 % width, y = Math.floor(i / (4 * width))
+      const fibre = 1.2 * Math.sin(.47*x+.18*y+Math.sin(.033*y)*1.7)
+      for (let j = 0; j < 3; j++) under[i+j] = .49*data[i+j] + .51*rawPaper[j] + fibre
+    }
+    const back = front.clone()
+    back.source = new T.Source({ data: under, width, height })
+    back.needsUpdate = true
+    maps.set(key, back)
+    return back
+  }
   const [base, edge, ink, bark, flower] = schemes[s].map(rgb),
     size = 384,
     data = new Uint8Array(size * size * 4)
@@ -142,6 +159,6 @@ export function umbrellaPainting(variant = 0) {
   texture.magFilter = T.LinearFilter
   texture.anisotropy = 4
   texture.needsUpdate = true
-  maps.set(s, texture)
+  maps.set(key, texture)
   return texture
 }

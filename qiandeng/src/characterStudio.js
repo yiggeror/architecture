@@ -205,7 +205,7 @@ function studio() {
   renderer.setClearColor(0, 0)
   renderer.outputColorSpace = T.SRGBColorSpace
   renderer.toneMapping = T.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.04
+  renderer.toneMappingExposure = .98
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = T.PCFSoftShadowMap
   renderer.shadowMap.autoUpdate = false
@@ -226,9 +226,9 @@ function studio() {
     rim = new T.DirectionalLight(0xffecd3, 1.05)
   scene.add(hemi, key, key.target, fill, rim)
   key.castShadow = true
-  key.shadow.mapSize.set(1024, 1024)
-  key.shadow.normalBias = 0.0012
-  key.shadow.bias = -0.00017
+  key.shadow.mapSize.set(1536, 1536)
+  key.shadow.normalBias = 0.0026
+  key.shadow.bias = -0.00027
   Object.assign(key.shadow.camera, {
     left: -1.42,
     right: 1.42,
@@ -258,6 +258,12 @@ function studio() {
     dirty = true,
     tracking = false
   let trial = {}
+  let clayStudy = false
+  let headFinishes = []
+  const claySkin = new T.MeshStandardMaterial({ color: 0xaca99c, roughness: .86, side: T.DoubleSide })
+  const claySclera = claySkin.clone(), clayIris = claySkin.clone()
+  claySclera.color.setHex(0xb9b7a9)
+  clayIris.color.setHex(0x817e71)
   let playing = !matchMedia('(prefers-reduced-motion: reduce)').matches,
     last = performance.now(),
     lastPaint = -1
@@ -277,19 +283,19 @@ function studio() {
   function lighting(next) {
     light = next
     const day = next === 'day'
-    scene.environmentIntensity = day ? 0.2 : 0.14
-    hemi.color.set(day ? 0xeaf0ec : 0xbac7d3)
-    hemi.groundColor.set(day ? 0xa6a397 : 0x756653)
-    hemi.intensity = day ? 1.03 : 0.72
-    key.color.set(day ? 0xffe9d2 : 0xffb473)
-    key.intensity = day ? 2.23 : 2.68
-    key.position.set(day ? 3.32 : -2.2, day ? 3.03 : 2.1, day ? 3.82 : 3.0)
-    fill.color.set(day ? 0xcddedb : 0x9dbbca)
-    fill.intensity = day ? 0.72 : 0.66
-    fill.position.set(day ? -2.95 : 2.6, 1.95, 3.05)
-    rim.color.set(day ? 0xfff1d4 : 0xf2cba4)
-    rim.intensity = day ? 1.23 : 1.03
-    rim.position.set(day ? -1.65 : 2.1, 3.46, -2.2)
+    scene.environmentIntensity = day ? 0.31 : 0.22
+    hemi.color.set(day ? 0xc9d9e2 : 0x9babcb)
+    hemi.groundColor.set(day ? 0xb79c8d : 0x81665f)
+    hemi.intensity = day ? 0.76 : 0.55
+    key.color.set(day ? 0xffead8 : 0xffc38e)
+    key.intensity = day ? 2.53 : 2.63
+    key.position.set(day ? -3.25 : 2.4, day ? 3.08 : 2.63, day ? 4.05 : 2.78)
+    fill.color.set(day ? 0xc5d6de : 0xaac9e1)
+    fill.intensity = day ? 0.65 : 0.55
+    fill.position.set(day ? 3.05 : -2.65, 1.62, 3.18)
+    rim.color.set(day ? 0xffe3c0 : 0xb9cada)
+    rim.intensity = day ? 1.60 : 1.48
+    rim.position.set(day ? 1.65 : -2.1, 3.12, -2.55)
     floor.material.opacity = day ? 0.105 : 0.17
     state.day = day
     if (current) actorPose()
@@ -312,13 +318,13 @@ function studio() {
       bones = current.rig.bones
     if (view === 'hand')
       return bones[hand + 'Hand'].localToWorld(focus.set(0, -0.058 * p.height, 0.025 * p.height))
-    return bones.head.localToWorld(focus.set(0, 0.065 * p.height, 0.025 * p.height))
+    return bones.head.localToWorld(focus.set(0, 0.083 * p.height, 0.022 * p.height))
   }
   function fittedDistance(direction) {
     const half = Math.tan(T.MathUtils.degToRad(camera.fov / 2))
     const h = current.profile.height
     if (view !== 'full') {
-      const field = view === 'hand' ? 0.255 : 0.516
+      const field = view === 'hand' ? 0.255 : 0.458
       return (field * h) / (2 * half * Math.min(1, camera.aspect / 0.83))
     }
     const right = new T.Vector3().crossVectors(up, direction).normalize(),
@@ -443,6 +449,15 @@ function studio() {
     $('trial-reset').disabled = !changed
     $('trial-status').textContent = changed ? '试样中' : '原样'
   }
+  function showHeadSurface() {
+    for (const part of headFinishes) {
+      part.mesh.visible = part.visible && (!clayStudy || Boolean(part.clay))
+      part.mesh.material = clayStudy && part.clay ? part.clay : part.finish
+    }
+    $('clay-face').setAttribute('aria-pressed', clayStudy ? 'true' : 'false')
+    renderer.shadowMap.needsUpdate = true
+    dirty = true
+  }
   function mountCharacter(profile) {
     const next = createCharacter(profile, studyCast[which].job)
     current?.dispose()
@@ -451,8 +466,20 @@ function studio() {
       if (o.isMesh) {
         o.castShadow = !o.material?.transparent || o.material?.alphaTest > 0
         o.receiveShadow = true
+        // The outer skin faces share an edge at the eyelids and nose. Use
+        // the back of the shell to cast, keeping the face free of depth stripes.
+        if (o.material?.userData.skin) o.material.shadowSide = T.BackSide
       }
     })
+    const portrait = current.group.getObjectByName('面容·' + profile.name)
+    headFinishes = []
+    portrait.traverse((mesh) => {
+      if (!mesh.isMesh) return
+      const clay = /面骨|上下眼睑/.test(mesh.name) ? claySkin :
+        mesh.name.includes('巩膜') ? claySclera : mesh.name.startsWith('虹膜') ? clayIris : null
+      headFinishes.push({ mesh, clay, finish: mesh.material, visible: mesh.visible })
+    })
+    showHeadSurface()
     scene.add(current.group)
     actorPose()
     measure()
@@ -489,6 +516,10 @@ function studio() {
         fitTrial(changes)
       })
     }
+    $('clay-face').addEventListener('click', () => {
+      clayStudy = !clayStudy
+      showHeadSurface()
+    })
     $('trial-jaw').addEventListener('input', updateJawLabel)
     $('trial-reset').addEventListener('click', () => fitTrial({}))
     $('export-figure').addEventListener('click', downloadFigure)

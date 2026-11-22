@@ -148,14 +148,6 @@ export function navigation(canvas, camera, world) {
     select(i)
   }
 
-  addEventListener('resize', () =>
-    requestAnimationFrame(() => {
-      // The renderer updates the perspective lens during the resize event.
-      const station = stations[selected]
-      if (station?.panorama || station?.portraitEye) placeStation(station)
-    }),
-  )
-
   addEventListener('keydown', (e) => {
     if (!controls.has(e.code) || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return
     // Let Shift+Tab and other native focus shortcuts work normally.

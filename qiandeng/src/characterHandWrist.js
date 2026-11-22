@@ -21,11 +21,14 @@ export function joinWrists(rig, hands) {
   const g = skin.mesh.geometry,
     positions = g.attributes.position,
     colors = g.attributes.color,
+    skinWeights = g.attributes.skinWeight,
+    skinIndices = g.attributes.skinIndex,
     originalNormals = g.attributes.normal.array.slice(),
     forearmVertices = new Set(),
     point = new T.Vector3(),
     carriage = new T.Vector3(),
     tangent = new T.Vector3(),
+    sectionCentre = new T.Vector3(),
     target = new T.Vector3(),
     pigment = new T.Vector3(),
     average = new T.Vector3()
@@ -40,7 +43,19 @@ export function joinWrists(rig, hands) {
       palm.color.setXYZ(first, pigment.x, pigment.y, pigment.z)
       palm.color.setXYZ(twin, pigment.x, pigment.y, pigment.z)
     }
+    const tailor = hand.mesh.userData.fitCuff
+    const forearmBone = rig.index[side + 'Forearm'], handBone = rig.index[side + 'Hand']
     for (const row of skin[side]) {
+      // The cuff follows the forearm bone. Keep the hidden proximal ring
+      // inside it, and distribute wrist flexion over the last four cm.
+      const bend = tailor ? 1 - T.MathUtils.smoothstep(row.ahead, 0, 0.043) : row.blend
+      const blend = tailor ? Math.min(bend, row.blend) : row.blend
+      const underCuff = tailor ? 0.25 * T.MathUtils.smoothstep(row.ahead, 0.012, 0.040) : 0
+      if (underCuff) {
+        sectionCentre.set(0,0,0)
+        for (const k of row.indices) sectionCentre.add(target.fromBufferAttribute(positions,k))
+        sectionCentre.multiplyScalar(1/row.indices.length)
+      }
       for (let i = 0; i < outer.length; i++) {
         const k = row.indices[i]
         forearmVertices.add(k)
@@ -51,9 +66,19 @@ export function joinWrists(rig, hands) {
         // The palm bears on the oar's grip. The bare forearm leaves its copper
         // collar behind the hand as it leads back towards the rowing elbow.
         if (skin.rowing) target.z -= 0.017 * -Math.expm1(-row.ahead / 0.012)
-        point.lerp(target, row.blend)
+        point.lerp(target, blend)
+        if (underCuff) point.lerp(sectionCentre, underCuff)
+        if (tailor) {
+          if (bend === 0 || bend === 1) {
+            skinIndices.setXYZW(k, bend ? handBone : forearmBone, 0, 0, 0)
+            skinWeights.setXYZW(k, 1, 0, 0, 0)
+          } else {
+            skinIndices.setXYZW(k, forearmBone, handBone, 0, 0)
+            skinWeights.setXYZW(k, 1-bend, bend, 0, 0)
+          }
+        }
         positions.setXYZ(k, point.x, point.y, point.z)
-        pigment.fromBufferAttribute(colors, k).lerp(target.fromBufferAttribute(palm.color, outer[i]), row.blend)
+        pigment.fromBufferAttribute(colors, k).lerp(target.fromBufferAttribute(palm.color, outer[i]), blend)
         colors.setXYZ(k, pigment.x, pigment.y, pigment.z)
       }
     }
@@ -79,6 +104,7 @@ export function joinWrists(rig, hands) {
     }
     palm.normal.needsUpdate = true
   }
+  skinIndices.needsUpdate = skinWeights.needsUpdate = true
   positions.needsUpdate = colors.needsUpdate = g.attributes.normal.needsUpdate = true
   g.computeBoundingSphere()
 }

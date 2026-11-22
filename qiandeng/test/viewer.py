@@ -41,6 +41,8 @@ PANORAMA_LANDMARKS = {
 # The official Three.js devtools hook observes both the minified single file and
 # the review build. All camera movement comes from browser input.
 OBSERVER = """window.__THREE_DEVTOOLS__ = new EventTarget();
+window.viewerEmptyResizes = [];
+let observedSurface, completedWidth, completedHeight;
 __THREE_DEVTOOLS__.addEventListener('observe', ({detail: scene}) => {
   if (!scene.isScene) return;
   const previous = scene.onAfterRender;
@@ -49,6 +51,19 @@ __THREE_DEVTOOLS__.addEventListener('observe', ({detail: scene}) => {
       window.viewerCamera = camera;
       if (!window.viewerWorld || root.children.some(o=>o.isScene)) window.viewerWorld = root;
       window.viewerFrames = (window.viewerFrames || 0) + 1;
+    }
+    if (renderer.getRenderTarget() === null && renderer.domElement.closest('#court')) {
+      const canvas = renderer.domElement;
+      if (!observedSurface) {
+        observedSurface = new MutationObserver(() => {
+          if (document.documentElement.dataset.ready &&
+              (completedWidth !== canvas.width || completedHeight !== canvas.height))
+            viewerEmptyResizes.push([completedWidth, completedHeight, canvas.width, canvas.height]);
+        });
+        observedSurface.observe(canvas, {attributes:true, attributeFilter:['width', 'height']});
+      }
+      completedWidth = canvas.width;
+      completedHeight = canvas.height;
     }
     previous.call(this, renderer, root, camera, ...args);
   };
@@ -669,6 +684,9 @@ def main():
                         viewer.touch("touchCancel")
             if viewer.errors:
                 failed.append(f"{name}/browser: {viewer.errors}")
+            empty = viewer.page.evaluate("viewerEmptyResizes")
+            if empty:
+                failed.append(f"{name}/canvas was resized after its last completed draw: {empty}")
             print("RESULT", name, json.dumps(viewer.data, ensure_ascii=False), flush=True)
             viewer.context.close()
         browser.close()

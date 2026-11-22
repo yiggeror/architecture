@@ -63,7 +63,7 @@ function update(c, state) {
     const requested = grips[side]
     if (!requested) continue
     const mat = c.rig.bones[side + 'Hand'].matrixWorld,
-      actual = grip.clone().applyMatrix4(mat)
+      actual = (requested.localContact ?? grip).clone().applyMatrix4(mat)
     assert.ok(
       actual.distanceTo(requested.point) < 0.0015,
       'missed ' +
@@ -115,6 +115,7 @@ test('all twelve trades use reachable contacts on rendered fittings throughout a
           const radius = g[side].radius,
             d = surfaceDistance(c.equipment.group, g[side].point)
           assert.ok(d <= radius + 0.006, job + ' ' + side + ' has no handle at the palm: ' + d)
+          if (g[side].kind === 'strings') assert.ok(d < 0.0012, 'fretting contact misses the silk')
         }
       if (job === 'flute') {
         const mouth = portraitMouth(c.profile)
@@ -311,7 +312,7 @@ test('all shore workers follow their own modelled tools around the actual scaled
         const g = update(c, state)
         for (const side of ['l', 'r'])
           if (g[side]) {
-            const hand = grip
+            const hand = (g[side].localContact ?? grip)
               .clone()
               .applyMatrix4(c.rig.bones[side + 'Hand'].matrixWorld)
               .applyMatrix4(base)

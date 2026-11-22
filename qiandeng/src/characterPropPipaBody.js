@@ -1,8 +1,14 @@
-import { face, piece, tau } from './characterPropCraft.js'
+import { pipaTimber } from './characterPropPipaTimber.js'
+import { cross, sub, unit } from './mesh.js'
+import { face, piece, pigment, tau } from './characterPropCraft.js'
 
-export const bellyRings = [
-  [0, 0.023],
-  [0.022, 0.096],
+// The lower curve is almost horizontal at the end pin. Follow the outline
+// in arc-length order so its derivative continues through the shoulder.
+const outline = [
+  [0, 0.006],
+  [0.0013, 0.033],
+  [0.007, 0.066],
+  [0.021, 0.096],
   [0.061, 0.147],
   [0.124, 0.17],
   [0.184, 0.174],
@@ -10,14 +16,41 @@ export const bellyRings = [
   [0.325, 0.116],
   [0.381, 0.073],
   [0.426, 0.039],
+  [0.457, 0.0258],
   [0.475, 0.022],
 ]
-export const bellySegments = 28
+export const bellyRings = []
+for (let i = 0; i < outline.length - 1; i++) {
+  const a = outline[i],
+    b = outline[i + 1]
+  const prev = outline[Math.max(0, i - 1)],
+    next = outline[Math.min(outline.length - 1, i + 2)]
+  for (let j = 0; j < 3; j++) {
+    const t = j / 3,
+      t2 = t * t,
+      t3 = t2 * t
+    bellyRings.push(
+      a.map(
+        (x, k) =>
+          (2 * t3 - 3 * t2 + 1) * x +
+          (t3 - 2 * t2 + t) * (b[k] - prev[k]) * 0.5 +
+          (-2 * t3 + 3 * t2) * b[k] +
+          (t3 - t2) * (next[k] - x) * 0.5,
+      ),
+    )
+  }
+}
+bellyRings.push(outline.at(-1))
+export const bellySegments = 40
 export function bellyPoint(row, segment, front) {
   const a = (tau * segment) / bellySegments,
-    [y, r] = bellyRings[row],
-    depth = front ? 0.012 : 0.023 + 0.059 * Math.sqrt(r / 0.174)
-  return [r * Math.cos(a), y, (front ? 0.017 : 0.0105) + Math.sin(a) * depth]
+    [y, r] = bellyRings[row]
+  const t = Math.max(0, Math.min(1, (y - 0.407) / 0.068))
+  const heel = t * t * (3 - 2 * t)
+  const bowl = 0.01 + 0.076 * Math.sqrt(r / 0.174)
+  const depth = front ? 0.012 - 0.0041 * heel : bowl + (0.0214 - bowl) * heel
+  const center = front ? 0.017 : 0.0105 + 0.00422 * heel
+  return [r * Math.cos(a), y, center + Math.sin(a) * depth]
 }
 
 // Selectable front, back, binding and end plates are also the actual closed
@@ -26,16 +59,37 @@ export function pipaBody(m) {
   const surfaces = [true, false].map((front) =>
     piece(front ? '桐木面板' : '梨腹背板', (b) => {
       const start = front ? 0 : bellySegments / 2,
-        finish = start + bellySegments / 2,
-        shades = front ? [0xd6af79, 0xd9b47e, 0xd7b07a, 0xddb782] : [0x754736, 0x814c34, 0x825439, 0x754d37]
+        finish = start + bellySegments / 2
+      const stock = pipaTimber(front),
+        white = pigment(0xffffff)
+      const normal = (r, i) => {
+        const dy = sub(
+          bellyPoint(Math.min(r + 1, bellyRings.length - 1), i, front),
+          bellyPoint(Math.max(0, r - 1), i, front),
+        )
+        const around = sub(bellyPoint(r, i + 0.01, front), bellyPoint(r, i - 0.01, front))
+        return unit(cross(dy, around))
+      }
       for (let j = 1; j < bellyRings.length; j++)
-        for (let i = start; i < finish; i++)
-          face(b, m.matte, shades[i % 4], [
-            bellyPoint(j - 1, i, front),
-            bellyPoint(j, i, front),
-            bellyPoint(j, i + 1, front),
-            bellyPoint(j - 1, i + 1, front),
-          ])
+        for (let i = start; i < finish; i++) {
+          const corners = [
+            [j - 1, i],
+            [j, i],
+            [j, i + 1],
+            [j - 1, i + 1],
+          ]
+          const points = corners.map(([r, a]) => bellyPoint(r, a, front))
+          b.face(
+            stock,
+            points,
+            white,
+            points.map(([x, y], k) => [
+              front ? x / 0.35 + 0.5 : (corners[k][1] - start) / (finish - start),
+              y / 0.48,
+            ]),
+            corners.map(([r, a]) => normal(r, a)),
+          )
+        }
     }),
   )
   const sides = piece('琴身侧沿与封口', (b) => {
@@ -95,15 +149,16 @@ export function pipaNeck(m) {
     for (let j = 1; j < rings.length; j++)
       for (let i = 0; i < rings[j].length; i++) {
         const k = (i + 1) % rings[j].length
-        face(b, m.matte, i >= 16 ? 0x4b3736 : 0x83553c, [
-          rings[j - 1][i],
-          rings[j][i],
-          rings[j][k],
-          rings[j - 1][k],
+        const pts = [rings[j - 1][i], rings[j][i], rings[j][k], rings[j - 1][k]]
+        b.face(pipaTimber(false), pts, pigment(i >= 16 ? 0xbcb0a1 : 0xf0dac7), [
+          [i / 21, 0.12 + 1.8 * (levels[j - 1][0] - 0.45)],
+          [i / 21, 0.12 + 1.8 * (levels[j][0] - 0.45)],
+          [(i + 1) / 21, 0.12 + 1.8 * (levels[j][0] - 0.45)],
+          [(i + 1) / 21, 0.12 + 1.8 * (levels[j - 1][0] - 0.45)],
         ])
       }
-    face(b, m.matte, 0x684932, rings[0])
-    face(b, m.matte, 0x684932, [...rings.at(-1)].reverse())
+    face(b, pipaTimber(false), 0xe7ccb6, rings[0])
+    face(b, pipaTimber(false), 0xe7ccb6, [...rings.at(-1)].reverse())
   })
   const fingerboard = piece('乌木指板', (b) => {
     const strips = levels.slice(0, 4).map(([y, w, , z]) => [

@@ -164,7 +164,7 @@ function handrail(b, m, boat, z0, z1, h, panels) {
     b.box(m.darkwood, sg * w, boat.deck + h * 0.59, z1, 0.077, h * 0.95, 0.079)
   }
 }
-function pavilion(b, m, boat, cab, boxes) {
+function pavilion(b, m, boat, cab, boxes, deckLanterns) {
   const w = boat.beam * 0.82,
     len = boat.length * 0.49,
     z = 0.32,
@@ -224,8 +224,16 @@ function pavilion(b, m, boat, cab, boxes) {
   boxes.push([-w * 0.55, eave - 0.12, z - len * 0.55, w * 0.55, eave + 0.36, z + len * 0.55])
   boxes.push([-w * 0.28, eave + 0.31, z - len * 0.43, w * 0.28, eave + (cab ? 0.75 : 0.56), z + len * 0.43])
   for (const side of [-1, 1])
-    for (const end of [-1, 1])
-      lantern(b, m, side * w * 0.48, eave - 0.46, z + end * len * 0.5, 0.16, 0.42, cab ? 'red' : 'amber')
+    for (const end of [-1, 1]) {
+      const offset = new T.Vector3(side * w * 0.48, eave - 0.46, z + end * len * 0.5)
+      const bright = side === -1 && end === 1
+      const style = cab || (!bright && end === -1) ? 'red' : 'amber'
+      lantern(b, m, offset.x, offset.y, offset.z, bright ? 0.17 : 0.14, bright ? 0.44 : 0.38, style)
+      deckLanterns.push({
+        offset, position: new T.Vector3(), tint: new T.Color(style === 'red' ? 0xf49a6b : 0xffdcaa),
+        power: bright ? 14.5 : style === 'red' ? 2.9 : 4.8, range: 5.5,
+      })
+    }
   return eave
 }
 function drum(b, m, x, y, z, r) {
@@ -300,7 +308,8 @@ function paradeBarge(b, m, silk, panels, boat, boxes) {
 export function buildVessel(scene, m, boat, silk, panels) {
   const group = new T.Group(),
     b = new Mason(group),
-    boxes = []
+    boxes = [],
+    deckLanterns = []
   group.name = boat.name
   hull(b, m, boat, boxes)
   const d = boat.deck,
@@ -309,7 +318,7 @@ export function buildVessel(scene, m, boat, silk, panels) {
   if (boat.kind === 'carp') paradeBarge(b, m, silk, panels, boat, boxes)
   else if (passenger || music) {
     handrail(b, m, boat, -boat.length * 0.32, boat.length * 0.35, 0.51, false)
-    pavilion(b, m, boat, passenger, boxes)
+    pavilion(b, m, boat, passenger, boxes, deckLanterns)
     if (music) drum(b, m, 0, d + 0.05, boat.length * 0.3, 0.29)
   } else if (boat.kind === 'covered') {
     const eave = d + 0.82,
@@ -366,7 +375,7 @@ export function buildVessel(scene, m, boat, silk, panels) {
   }
   b.finish()
   scene.add(group)
-  return { group, boxes, oars }
+  return { group, boxes, oars, deckLanterns }
 }
 
 // The thinner turned section is where both hands close. The broad blade

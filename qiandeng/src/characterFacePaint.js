@@ -1,6 +1,6 @@
 import * as T from 'three'
 import { browInk, orbitalWash, vermilion } from './characterVisageInk.js'
-import { bell, clamp, hairEdge, parting } from './characterFaceSurface.js'
+import { hairEdge, parting } from './characterFaceSurface.js'
 
 export const faceU = (x) => 0.5 + x / 0.196
 export const faceV = (y) => (y + 0.006) / 0.249
@@ -70,82 +70,81 @@ export function paintFace(a) {
   ctx.setTransform(c.width / 0.196, 0, 0, -c.height / 0.249, c.width * 0.5, c.height * (1 - 0.006 / 0.249))
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
-  wash(ctx, 0, 0.153, 0.056, 0.036, 0xffe3b6, 0.14)
-  wash(ctx, 0, 0.015, 0.024, 0.01, 0xf4c5a1, 0.19)
-  wash(ctx, 0, 0.006, 0.053, 0.01, 0x927f75, 0.21)
-  wash(ctx, 0, a.mouthY - 0.011, 0.022, 0.006, 0x8e675a, 0.2)
-  for (const s of [-1, 1]) {
-    wash(ctx, s * 0.054, a.ey - 0.02, 0.038, 0.023, p.portraitInk?.cheek ?? 0xc17170, 0.24, s * 0.47)
-    wash(ctx, s * 0.063, a.ey - 0.006, 0.017, 0.023, p.portraitInk?.cheek ?? 0xb47870, 0.13, s * 0.25)
-    wash(ctx, s * 0.043, a.ey - 0.014, 0.021, 0.011, 0xe1ad91, 0.2, s * 0.31)
-    wash(ctx, s * 0.06, 0.061, 0.021, 0.032, 0x908680, 0.16, -s * 0.38)
-    wash(ctx, s * 0.055, 0.137, 0.02, 0.019, 0x9c8380, 0.19)
-    wash(ctx, s * a.ec, a.ey + 0.003, 0.022, 0.013, 0xa4776b, 0.21)
-    wash(ctx, s * (a.ec + 0.005), a.ey - 0.01, 0.017, 0.0062, 0x9c776c, 0.1 + a.age * 0.22, s * 0.3)
-    wash(ctx, s * (a.ec + 0.008), a.ey - 0.013, 0.014, 0.0053, 0xf0c8af, 0.12, s * 0.34)
-    wash(ctx, s * (a.nw + 0.001), a.noseY + 0.017, 0.0068, 0.016, 0xa78076, 0.19, -s * 0.2)
-    wash(ctx, s * (a.nw + 0.007), a.noseY - 0.012, 0.009, 0.014, 0xab8672, 0.13, -s * 0.45)
+  // Each sitter has her or his own temperature changes between the planes of
+  // forehead, temple, cheek and muzzle. They are translucent skin pigments,
+  // leaving the neutral complexion intact at the jaw-to-neck connection.
+  const colorways = {
+    silk: [0xf4d0c0, 0xc4777c, 0xb58692, 0xe89d91],
+    lute: [0xf3cead, 0xcc8373, 0xaa7b80, 0xf0ad95],
+    scholar: [0xebcbbd, 0xba7d79, 0x988494, 0xe6a695],
+    drummer: [0xe4ae8c, 0xb86852, 0x9c756c, 0xd68b6e],
+    market: [0xf1c8ae, 0xc77768, 0xac8080, 0xef9d87],
+    boatman: [0xe0b18e, 0xaa7561, 0x987e73, 0xd0997d],
   }
-  wash(ctx, 0.00065 * a.asym, a.noseY + 0.018, 0.0055, 0.016, 0xffddbb, 0.13)
-  wash(ctx, 0, a.noseY + 0.005, 0.009, 0.0055, 0xd48377, 0.3)
-  wash(ctx, -0.00055, a.noseY + 0.0056, 0.0052, 0.003, 0xffdfc3, 0.16)
-  wash(ctx, 0, a.noseY - 0.0043, 0.014, 0.0031, 0x967066, 0.19)
+  const [ivory, flush, cool, apricot] = colorways[a.family] ?? colorways.silk
+  const vivid = a.family === 'silk' || a.family === 'lute' || a.family === 'market'
+  wash(ctx, 0, 0.15, 0.06, 0.043, ivory, 0.33)
+  wash(ctx, -0.004, 0.146, 0.035, 0.025, ivory, 0.2)
+  wash(ctx, 0, 0.02, 0.024, 0.015, ivory, 0.25)
+  wash(ctx, 0, 0.0055, 0.042, 0.008, cool, 0.16)
+  wash(ctx, 0, a.mouthY - 0.0095, 0.017, 0.004, 0xa77572, 0.29)
   for (const s of [-1, 1]) {
-    const x = s * (a.nw - 0.001),
-      y = a.noseY - 0.00275
-    wash(ctx, x, y, 0.0046, 0.0026, 0xa57869, 0.21, s * 0.24)
-    wash(ctx, x, y + 0.0002, 0.0035, 0.0018, 0x8c665a, 0.16, s * 0.24)
-    const outline = []
-    for (let i = 0; i <= 17; i++) {
-      const t = i / 17
-      outline.push([s * (a.nw + 0.0046 + 0.00048 * Math.sin(t * Math.PI)), a.noseY - 0.0013 + t * 0.0064])
-    }
-    stroke(ctx, outline, 0.0003, 0x987064, 0.095)
-    for (let j = 0; j < 2; j++) {
-      const pts = []
-      for (let i = 0; i <= 19; i++) {
-        const t = i / 19
-        pts.push([
-          s * (a.nw + 0.005 + 0.011 * t + 0.003 * Math.sin(t * Math.PI)) + 0.0017 * j,
-          a.noseY + 0.0014 - t * 0.023,
-        ])
+    const cheek = s * (a.ec + 0.02)
+    wash(ctx, s * 0.071, 0.127, 0.023, 0.049, cool, 0.24, s * 0.15)
+    wash(ctx, s * 0.056, 0.063, 0.027, 0.033, cool, 0.2, -s * 0.58)
+    wash(ctx, s * 0.041, 0.057, 0.014, 0.023, ivory, 0.16, -s * 0.55)
+    // High, lateral carmine for the merchant. The player's apricot rises
+    // softly under her eye; the drummer flushes further down the cheek.
+    const height = a.ey - (a.family === 'drummer' ? 0.024 : a.family === 'lute' ? 0.016 : 0.02)
+    wash(ctx, cheek, height, 0.051, 0.033, flush, vivid ? 0.2 : 0.16, s * 0.36)
+    wash(ctx, cheek + s * 0.002, height - 0.0005, 0.041, 0.02, apricot, 0.19, s * 0.29)
+    wash(ctx, s * (a.ec - 0.002), a.ey - 0.011, 0.023, 0.013, blend(ivory, 0xc4bcc1, 0.56), 0.23, s * 0.23)
+    wash(ctx, s * (a.ec + 0.022), a.ey - 0.007, 0.016, 0.011, flush, vivid ? 0.16 : 0.09, s * 0.54)
+    wash(ctx, s * (a.ec - 0.013), a.ey + 0.006, 0.012, 0.01, cool, 0.24, -s * 0.24)
+    wash(ctx, s * (a.nw - 0.001), a.noseY + 0.017, 0.0075, 0.019, cool, 0.23, -s * 0.2)
+    wash(ctx, s * (a.nw + 0.003), a.noseY + 0.0025, 0.0074, 0.0057, flush, 0.29, s * 0.45)
+    wash(ctx, s * (a.nw + 0.008), a.noseY - 0.008, 0.0058, 0.009, 0xbd9386, 0.16, -s * 0.48)
+    wash(ctx, s * (a.nw + 0.011), a.noseY - 0.0068, 0.006, 0.012, ivory, 0.29, -s * 0.47)
+  }
+  wash(ctx, -0.0004, a.noseY + 0.02, 0.0046, 0.016, ivory, 0.18)
+  wash(ctx, 0, a.noseY + 0.0049, 0.01, 0.0057, apricot, 0.48)
+  wash(ctx, -0.0008, a.noseY + 0.0062, 0.0047, 0.0023, 0xffdcc2, 0.38)
+  wash(ctx, 0, a.noseY - 0.0036, 0.014, 0.0031, 0x986b66, 0.24)
+  for (const s of [-1, 1]) {
+    wash(ctx, s * (a.nw - 0.001), a.noseY - 0.0024, 0.0038, 0.0015, 0x92665f, 0.26, s * 0.25)
+    wash(ctx, s * 0.0035, a.mouthY + 0.009, 0.0019, 0.0054, ivory, 0.18, s * 0.12)
+    if (a.age > 0.22) {
+      const fold = []
+      for (let j = 0; j <= 24; j++) {
+        const t = j / 24
+        fold.push([s * (a.nw + 0.006 + 0.011 * t + 0.0017 * Math.sin(Math.PI * t)), a.noseY - 0.0004 - 0.023 * t])
       }
-      stroke(ctx, pts, 0.00036, 0x966f60, 0.08 + 0.17 * a.age)
+      stroke(ctx, fold, 0.00048, 0x9f7462, a.age * 0.25)
     }
-    wash(ctx, s * 0.0042, a.mouthY + 0.0099, 0.0026, 0.0044, 0xeac5b1, 0.069)
   }
-  wash(ctx, 0, a.mouthY, 0.034, 0.012, 0xc48272, 0.12)
-  wash(ctx, 0, a.mouthY + 0.009, 0.006, 0.0048, 0xb48b76, 0.15)
+  if (p.id === 9) {
+    // A sparse group of warm freckles sits across the musician's high
+    // cheek and nose. Their scale and spacing stay independent of skin grain.
+    for (const [x, y, radius] of [
+      [-0.049, -0.016, 0.00074],
+      [-0.043, -0.014, 0.00051],
+      [-0.038, -0.018, 0.00067],
+      [-0.028, -0.0145, 0.00048],
+      [-0.011, -0.0095, 0.00052],
+      [0.006, -0.011, 0.00063],
+      [0.031, -0.016, 0.00055],
+      [0.038, -0.013, 0.00076],
+      [0.044, -0.016, 0.00051],
+    ]) {
+      wash(ctx, x, a.ey + y, radius, radius * 0.77, 0x986b57, 0.44, x * 11)
+    }
+  }
+  wash(ctx, 0, a.mouthY, 0.033, 0.0125, flush, 0.23)
+  wash(ctx, 0, a.mouthY + 0.0098, 0.0047, 0.0053, cool, 0.22)
   vermilion(ctx, a, random)
   for (const s of [-1, 1]) {
     orbitalWash(ctx, a, s)
     browInk(ctx, a, s, random)
-    const crease = []
-    for (let i = 0; i <= 34; i++) {
-      const u = -0.84 + (1.8 * i) / 34,
-        o = a.orbit(s, u)
-      crease.push([o.x, o.top + 0.0014 + 0.0029 * o.span])
-    }
-    stroke(ctx, crease, 0.00043, 0x8a675c, 0.26 + 0.15 * a.age)
-    const medial = a.orbit(s, -1)
-    stroke(
-      ctx,
-      [
-        [medial.x - s * 0.001, medial.y + 0.0024],
-        [medial.x - s * 0.00143, medial.y + 0.0006],
-        [medial.x - s * 0.00064, medial.y - 0.00118],
-      ],
-      0.0004,
-      0x90645b,
-      0.36,
-    )
-    const under = []
-    for (let i = 0; i <= 33; i++) {
-      const u = -0.73 + (1.7 * i) / 33,
-        o = a.orbit(s, u)
-      under.push([o.x, o.bottom - 0.0024 - 0.00065 * o.span])
-    }
-    stroke(ctx, under, 0.0003, 0xa87968, 0.13)
     if (a.age > 0.13) {
       for (let j = 0; j < 3; j++) {
         const pts = []
@@ -170,30 +169,6 @@ export function paintFace(a) {
       stroke(ctx, pts, 0.00031, 0x957567, 0.09 + 0.19 * a.age)
     }
   }
-  for (let i = 0; i < 1600; i++) {
-    const x = (random() - 0.5) * 0.159,
-      y = 0.012 + random() * 0.17,
-      alpha = (0.012 + random() * 0.04) * (1 + 0.45 * a.age)
-    const rr = 0.0001 + random() * 0.00036
-    ctx.beginPath()
-    ctx.ellipse(x, y, rr, rr * 0.62, random() * 3, 0, 2 * Math.PI)
-    ctx.fillStyle = i % 5 ? '#9d7660' : '#f5d9be'
-    ctx.globalAlpha = alpha
-    ctx.fill()
-  }
-  ctx.globalAlpha = 1
-  for (let i = 0; i < 9; i++) {
-    const s = i % 2 ? 1 : -1
-    wash(
-      ctx,
-      s * (0.03 + random() * 0.03),
-      0.071 + random() * 0.025,
-      0.00045 + random() * 0.00031,
-      0.00055,
-      0x8a6753,
-      0.23 + a.age * 0.19,
-    )
-  }
   for (let i = 0; i < 240; i++) {
     const th = (i / 239 - 0.5) * 3.08,
       y = hairEdge(a, th),
@@ -216,7 +191,7 @@ export function paintFace(a) {
       ],
       0.0001 + random() * 0.00029,
       p.hairColor,
-      0.13 + random() * 0.52,
+      0.13 + random() * 0.52
     )
   }
   if (p.facialHair) {
@@ -251,7 +226,7 @@ export function paintFace(a) {
           ],
           0.0002 + random() * 0.00033,
           hair,
-          0.15 + random() * 0.35,
+          0.15 + random() * 0.35
         )
       }
       for (let i = 0; i < 290; i++) {
@@ -268,7 +243,7 @@ export function paintFace(a) {
           ],
           0.00017 + random() * 0.00028,
           hair,
-          0.13 + random() * 0.24,
+          0.13 + random() * 0.24
         )
       }
     }
@@ -302,105 +277,153 @@ export function paintFace(a) {
   ctx.putImageData(img, 0, 0)
   return texture(c)
 }
-let eyes, hair
-export function eyeMap() {
-  if (eyes) return eyes
+const ocularPalette = {
+  // Limbus, iris body, transmitted color in the inferior stroma, collarette.
+  silk: ['#242127', '#534138', '#886d56', '#a48369'],
+  lute: ['#282427', '#564637', '#927653', '#a98b64'],
+  scholar: ['#242429', '#474244', '#7a7268', '#907a65'],
+  drummer: ['#2b2525', '#574439', '#8b6850', '#a98360'],
+  boatman: ['#322c27', '#55483a', '#8d7958', '#a99776'],
+  market: ['#342831', '#644747', '#a66f5b', '#bb8b70'],
+}
+const eyeAtlases = new Map(),
+  eyeMaterials = new Map()
+let hair
+const irisX = 259,
+  irisY = 127,
+  irisR = 83.8
+function cornealWindow(ctx, dark) {
+  // A quiet, elongated reflection just below the upper lid has a softer
+  // neighboring glint from the opposite part of the same window.
+  ctx.save()
+  ctx.translate(irisX - 23, irisY - 19)
+  ctx.rotate(-0.31)
+  wash(ctx, 0, 0, 14, 8, dark ? 0xffeed6 : 0xffefdf, dark ? 0.65 : 0.82)
+  ctx.beginPath()
+  ctx.moveTo(-8, -3)
+  ctx.bezierCurveTo(-2, -6, 5, -5, 9, -2)
+  ctx.bezierCurveTo(8, 0, 3, 3, -3, 4)
+  ctx.bezierCurveTo(-6, 5, -9, 1, -8, -3)
+  ctx.fillStyle = dark ? '#ffedcf' : '#fff6ec'
+  ctx.fill()
+  ctx.restore()
+  wash(ctx, irisX + 25, irisY + 20, 4.7, 2.8, dark ? 0xf1ceba : 0xffdfc2, 0.64)
+}
+export function eyeMap(a) {
+  const family = a?.family ?? 'silk'
+  if (eyeAtlases.has(family)) return eyeAtlases.get(family)
   const c = canvas(512, 256)
   if (!c) return null
   const ctx = c.getContext('2d'),
-    random = rng(442881)
-  const x = 259,
-    y = 127,
-    r = 83
-  const base = ctx.createLinearGradient(0, 50, 0, 201)
-  base.addColorStop(0, '#b9a99e')
-  base.addColorStop(0.48, '#e1d3c5')
-  base.addColorStop(1, '#d3bfaf')
-  ctx.fillStyle = base
+    palette = ocularPalette[family] ?? ocularPalette.silk
+  const random = rng(448919 + family.charCodeAt(0) * 37 + family.length)
+  const [edge, body, transmit, collar] = palette
+  const x = irisX,
+    y = irisY,
+    r = irisR
+  const ivory = ctx.createLinearGradient(0, 19, 0, 242)
+  for (const [t, color] of [
+    [0, '#938e97'],
+    [0.37, '#b7b6b9'],
+    [0.64, '#d6d0ce'],
+    [1, '#c3b0ae'],
+  ])
+    ivory.addColorStop(t, color)
+  ctx.fillStyle = ivory
   ctx.fillRect(0, 0, 512, 256)
-  wash(ctx, 30, 127, 87, 99, 0xbe877a, 0.52)
-  wash(ctx, 488, 125, 65, 88, 0xc69c87, 0.39)
-  for (let j = 0; j < 25; j++) {
-    const side = j % 2 ? 1 : -1,
-      xx = side === 1 ? 490 : 16,
-      yy = 72 + random() * 100,
-      len = 27 + random() * 82
-    stroke(
-      ctx,
-      [
-        [xx, yy],
-        [xx - side * len * 0.4, yy + random() * 9 - 4],
-        [xx - side * len, yy + random() * 17 - 8],
-      ],
-      0.48,
-      0xb47a70,
-      0.2,
-    )
-  }
-  const iris = ctx.createRadialGradient(x, y, 13, x, y, r)
-  iris.addColorStop(0, '#382e28')
-  iris.addColorStop(0.48, '#624735')
-  iris.addColorStop(0.72, '#513e30')
-  iris.addColorStop(0.92, '#3b302b')
-  iris.addColorStop(1, '#2c2524')
-  ctx.fillStyle = iris
-  ctx.beginPath()
-  ctx.arc(x, y, r, 0, 2 * Math.PI)
-  ctx.fill()
-  for (let j = 0; j < 470; j++) {
-    const a = random() * Math.PI * 2,
-      r1 = r * (0.41 + random() * 0.26),
-      r2 = r * (0.72 + random() * 0.22),
-      d = (random() - 0.5) * 0.07
-    stroke(
-      ctx,
-      [
-        [x + Math.cos(a) * r1, y + Math.sin(a) * r1],
-        [x + Math.cos(a + d) * (r1 + r2) * 0.5, y + Math.sin(a + d) * (r1 + r2) * 0.5],
-        [x + Math.cos(a) * r2, y + Math.sin(a) * r2],
-      ],
-      0.55 + random() * 0.85,
-      j % 3 ? 0x876f54 : 0x3c3029,
-      0.13 + random() * 0.26,
-    )
-  }
-  // The eyelid shades the upper iris. The warm reflected crescent of the
-  // lower stroma stays inside the limbus as the eye turns in its socket.
+  wash(ctx, 26, 136, 89, 92, 0xbd8d8d, 0.56)
+  wash(ctx, 57, 149, 74, 28, 0xc98986, 0.27, -0.23)
+  // The visible sclera occupies x=37..161 in the atlas. Shade the tucked
+  // lateral surface as it turns behind the rim; leave reflected ivory below
+  // the iris. Both corners settle gradually into the damp eyelid margin.
+  wash(ctx, 156, 111, 56, 85, 0xa3989c, 0.51, 0.24)
+  wash(ctx, 53, 117, 51, 73, 0xb8a09d, 0.35, -0.27)
   ctx.save()
   ctx.beginPath()
-  ctx.arc(x, y, r, 0, 2 * Math.PI)
+  ctx.arc(x, y, r + 1.8, 0, 2 * Math.PI)
   ctx.clip()
-  const lidShadow = ctx.createLinearGradient(0, y - r, 0, y + r * 0.44)
-  lidShadow.addColorStop(0, '#19171cf5')
-  lidShadow.addColorStop(0.42, '#211b23c9')
-  lidShadow.addColorStop(0.85, '#221b2726')
-  lidShadow.addColorStop(1, '#211a2000')
-  ctx.fillStyle = lidShadow
+  ctx.fillStyle = edge
+  ctx.fillRect(x - r - 2, y - r - 2, 2 * r + 4, 2 * r + 4)
+  const lens = ctx.createRadialGradient(x, y, 0, x, y, r)
+  for (const [t, col] of [
+    [0, edge],
+    [0.4, edge],
+    [0.51, body],
+    [0.69, transmit],
+    [0.84, body],
+    [1, edge],
+  ])
+    lens.addColorStop(t, col)
+  ctx.fillStyle = lens
   ctx.fillRect(x - r, y - r, 2 * r, 2 * r)
-  wash(ctx, x + 8, y + 46, 58, 31, 0x9e7551, 0.51, -0.09)
-  ctx.beginPath()
-  ctx.arc(x, y, r * 0.969, 0, 2 * Math.PI)
-  ctx.lineWidth = 4.1
-  ctx.strokeStyle = '#30292d'
-  ctx.globalAlpha = 0.83
-  ctx.stroke()
-  ctx.restore()
-  const pupil = ctx.createRadialGradient(x, y, 3, x, y, r * 0.53)
-  pupil.addColorStop(0, '#18171c')
-  pupil.addColorStop(0.78, '#242027')
-  pupil.addColorStop(1, '#2d242600')
+  const washLower = ctx.createRadialGradient(x + 8, y + r * 0.47, 0, x + 8, y + r * 0.47, r * 0.91)
+  washLower.addColorStop(0, transmit)
+  washLower.addColorStop(1, transmit + '00')
+  ctx.fillStyle = washLower
+  ctx.fillRect(x - r, y - r, 2 * r, 2 * r)
+  // Open, branching stromal folds. Their tips break before the limbal ring
+  // and their collarette is scalloped instead of a concentric gold outline.
+  for (let i = 0; i < 116; i++) {
+    const angle = ((i + random() * 0.63) * Math.PI * 2) / 116
+    const curved = (random() - 0.5) * 0.13
+    const middle = r * (0.56 + 0.09 * Math.sin(7 * angle) + 0.041 * Math.sin(13 * angle))
+    const inner = middle - r * (0.04 + 0.14 * random()),
+      outer = r * (0.73 + 0.21 * random())
+    const polar = (d, offset = 0) => [x + Math.cos(angle + offset) * d, y + Math.sin(angle + offset) * d]
+    ctx.beginPath()
+    ctx.moveTo(...polar(inner, curved * 0.75))
+    ctx.quadraticCurveTo(...polar(middle, curved - 0.033), ...polar(outer))
+    ctx.quadraticCurveTo(...polar(middle, curved + 0.025), ...polar(inner, curved * 0.75))
+    ctx.fillStyle = i % 4 === 0 ? edge : collar
+    ctx.globalAlpha = (0.12 + random() * 0.31) * (0.74 + 0.26 * Math.sin(angle))
+    ctx.fill()
+  }
+  ctx.globalAlpha = 1
+  const horizon = ctx.createLinearGradient(0, y - r, 0, y + r * 0.62)
+  horizon.addColorStop(0, '#201d29ef')
+  horizon.addColorStop(0.42, '#221f29bb')
+  horizon.addColorStop(0.74, '#271e2942')
+  horizon.addColorStop(1, '#30252c00')
+  ctx.fillStyle = horizon
+  ctx.fillRect(x - r - 2, y - r - 2, 2 * r + 4, 2 * r + 4)
+  const pupilRadius = r * (family === 'scholar' ? 0.43 : family === 'lute' ? 0.465 : 0.445)
+  const pupil = ctx.createRadialGradient(x, y, pupilRadius * 0.45, x, y, pupilRadius * 1.21)
+  pupil.addColorStop(0, '#1b1921')
+  pupil.addColorStop(0.73, '#252128')
+  pupil.addColorStop(1, '#30272a00')
   ctx.fillStyle = pupil
-  ctx.beginPath()
-  ctx.arc(x, y, r * 0.53, 0, 2 * Math.PI)
-  ctx.fill()
-  wash(ctx, x - 21, y - 12, 16.5, 9.3, 0xfff5e0, 1, -0.28)
-  ctx.fillStyle = '#fff8ea'
-  ctx.beginPath()
-  ctx.ellipse(x - 21, y - 12, 8.2, 4.7, -0.28, 0, Math.PI * 2)
-  ctx.fill()
-  wash(ctx, x + 26, y + 21, 3.2, 2.1, 0xe8cfaa, 0.62)
-  eyes = texture(c)
-  return eyes
+  ctx.fillRect(x - r, y - r, 2 * r, 2 * r)
+  const limbus = ctx.createRadialGradient(x, y, r * 0.77, x, y, r)
+  limbus.addColorStop(0, edge + '00')
+  limbus.addColorStop(0.65, edge + '39')
+  limbus.addColorStop(1, edge + 'ef')
+  ctx.fillStyle = limbus
+  ctx.fillRect(x - r, y - r, 2 * r, 2 * r)
+  cornealWindow(ctx, false)
+  ctx.restore()
+  const atlas = texture(c)
+  eyeAtlases.set(family, atlas)
+  return atlas
+}
+export function eyeMaterial(a) {
+  const family = a.family
+  if (eyeMaterials.has(family)) return eyeMaterials.get(family)
+  const m = new T.MeshPhysicalMaterial({
+    ior: 1.375,
+    specularIntensity: 0.37,
+    envMapIntensity: 0.47,
+    name: '眼白与褐色虹膜',
+    map: eyeMap(a),
+    color: 0xffffff,
+    roughness: 0.31,
+    emissive: 0xfff2e7,
+    emissiveMap: cornealLight(),
+    emissiveIntensity: 0.24,
+    vertexColors: true,
+    side: T.DoubleSide,
+  })
+  eyeMaterials.set(family, m)
+  return m
 }
 export function hairMap() {
   if (hair) return hair
@@ -427,7 +450,7 @@ export function hairMap() {
   return hair
 }
 
-let eyeLight, finish
+let eyeLight, dermisNormals
 export function cornealLight() {
   if (eyeLight) return eyeLight
   const c = canvas(512, 256)
@@ -435,44 +458,66 @@ export function cornealLight() {
   const ctx = c.getContext('2d')
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, 512, 256)
-  wash(ctx, 238, 115, 14, 8, 0xfff1df, 1, -0.28)
-  wash(ctx, 285, 148, 3.1, 2.1, 0xd8c5aa, 0.56)
+  cornealWindow(ctx, true)
   eyeLight = texture(c)
   return eyeLight
 }
-export function skinFinish() {
-  if (finish) return finish
-  const c = canvas(512, 512),
-    glaze = canvas(256, 256)
-  if (!c) return {}
+function tissueNormalMap() {
+  if (dermisNormals) return dermisNormals
+  const c = canvas(256, 256)
+  if (!c) return null
   const ctx = c.getContext('2d'),
-    pixels = ctx.createImageData(512, 512),
-    data = pixels.data
-  const rngFace = rng(574331),
-    height = Float32Array.from({ length: 512 * 512 }, () => rngFace() * 0.082)
-  for (let y = 0; y < 512; y++)
-    for (let x = 0; x < 512; x++) {
-      const i = y * 512 + x,
-        j = 4 * i
-      const nx = height[y * 512 + ((x + 1) % 512)] - height[y * 512 + ((x + 511) % 512)]
-      const ny = height[((y + 1) % 512) * 512 + x] - height[((y + 511) % 512) * 512 + x]
-      data[j] = Math.round(128 + nx * 126)
-      data[j + 1] = Math.round(128 + ny * 126)
-      data[j + 2] = 255
-      data[j + 3] = 255
+    pixels = ctx.createImageData(256, 256)
+  const random = rng(645173),
+    heights = Float32Array.from({ length: 256 * 256 }, () => random())
+  for (let y = 0; y < 256; y++)
+    for (let x = 0; x < 256; x++) {
+      const i = (256 * y + x) * 4
+      pixels.data[i] = 128 + 3.1 * (heights[256 * y + ((x + 1) % 256)] - heights[256 * y + ((x + 255) % 256)])
+      pixels.data[i + 1] = 128 + 3.1 * (heights[256 * ((y + 1) % 256) + x] - heights[256 * ((y + 255) % 256) + x])
+      pixels.data[i + 2] = 255
+      pixels.data[i + 3] = 255
     }
   ctx.putImageData(pixels, 0, 0)
+  dermisNormals = texture(c)
+  dermisNormals.colorSpace = T.NoColorSpace
+  return dermisNormals
+}
+export function skinFinish(a) {
+  const glaze = canvas(256, 256)
+  if (!glaze) return {}
   const g = glaze.getContext('2d')
-  g.fillStyle = '#edeeee'
+  g.fillStyle = '#eeeded'
   g.fillRect(0, 0, 256, 256)
   g.setTransform(256 / 0.196, 0, 0, -256 / 0.249, 128, 256 * (1 - 0.006 / 0.249))
-  wash(g, 0, 0.079, 0.014, 0.025, 0xb7b7b7, 0.86)
-  wash(g, 0, 0.047, 0.024, 0.007, 0xb4b4b4, 0.82)
-  wash(g, 0, 0.146, 0.033, 0.023, 0xcecece, 0.66)
-  const normalMap = texture(c),
-    roughnessMap = texture(glaze)
-  normalMap.colorSpace = T.NoColorSpace
+  const ny = a?.noseY ?? 0.072,
+    my = a?.mouthY ?? 0.048,
+    ey = a?.ey ?? 0.108
+  wash(g, 0, ny + 0.02, 0.0072, 0.022, 0xbdbdbd, 0.81)
+  wash(g, 0, ny + 0.006, 0.009, 0.005, 0xaaaaaa, 0.88)
+  wash(g, 0, 0.145, 0.036, 0.027, 0xd4d4d4, 0.66)
+  for (const s of [-1, 1]) {
+    wash(g, s * 0.047, ey - 0.015, 0.018, 0.0087, 0xd2d2d2, 0.73, s * 0.29)
+    if (a) {
+      for (let i = 0; i < 16; i++) {
+        const t = i / 15,
+          o = a.orbit(s, 2 * t - 1),
+          h = Math.sin(Math.PI * t)
+        wash(g, o.x, o.bottom - 0.0003, 0.003, 0.00085, 0x666666, 0.67 * h)
+      }
+    }
+  }
+  if (a) {
+    // The glossy band bends with the lower roll; the upper lip remains satin.
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 12 - 1,
+        x = t * a.mw,
+        l = a.lip(x)
+      const lower = (l.seam + l.lower) * 0.5
+      wash(g, x, lower, 0.0031, 0.0007 + (l.seam - l.lower) * 0.36, 0x9e9e9e, 0.69 * (1 - t * t))
+    }
+  } else wash(g, 0, my - 0.0029, 0.017, 0.0034, 0x9b9b9b, 0.83)
+  const roughnessMap = texture(glaze)
   roughnessMap.colorSpace = T.NoColorSpace
-  finish = { normalMap, normalScale: new T.Vector2(0.36, 0.36), roughness: 0.64, roughnessMap }
-  return finish
+  return { normalMap: tissueNormalMap(), normalScale: new T.Vector2(0.23, 0.23), roughness: 0.68, roughnessMap }
 }

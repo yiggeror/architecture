@@ -14,30 +14,42 @@ import {
 
 export function parasol(m) {
   return piece('梅枝双燕油纸伞', (b) => {
-    const ribs = 20,
-      radius = 0.505
-    const canopy = (a, r) => {
-      const fold = 0.0085 * Math.cos(ribs * a) * r * r
-      return [Math.cos(a) * radius * r, 0.899 - 0.178 * r ** 1.59 + fold, Math.sin(a) * radius * r]
+    const ribs = 20, radius = .505, sector = tau / ribs
+    // Each sheet is tensioned between two bamboo tips. The binding follows
+    // the scallop and carries the thickness at the silhouette in side light.
+    function canopy(angle, r) {
+      const flute = .5 - .5 * Math.cos(ribs * angle)
+      const dist = radius * r * (1 - .018 * flute * r ** 5)
+      const sag = flute * (.0105 * r ** 1.45 + .006 * r ** 6)
+      return [Math.cos(angle) * dist, .900 - .171 * r ** 1.68 - sag, Math.sin(angle) * dist]
     }
-    const levels = [0, 0.18, 0.52, 0.83, 0.94, 1]
-    for (let i = 0; i < ribs * 3; i++)
-      for (let j = 0; j < levels.length - 1; j++) {
-        const a = (tau * i) / (ribs * 3),
-          e = (tau * (i + 1)) / (ribs * 3),
-          lo = levels[j],
-          hi = levels[j + 1]
-        const p =
-          lo === 0
-            ? [canopy(a, 0), canopy(e, hi), canopy(a, hi)]
-            : [canopy(a, lo), canopy(e, lo), canopy(e, hi), canopy(a, hi)]
-        b.face(
-          m.parasol,
-          p,
-          1,
-          p.map((q) => [0.5 + (0.497 * q[0]) / radius, 0.5 + (0.497 * q[2]) / radius]),
-        )
+    function surfaceNormal(a, r) {
+      const k = Math.max(.012, r), dr = .001, da = .001
+      const u = canopy(a, k - dr), v = canopy(a, k + dr)
+      const w = canopy(a - da, k), q = canopy(a + da, k)
+      const rx = v[0] - u[0], ry = v[1] - u[1], rz = v[2] - u[2]
+      const tx = q[0] - w[0], ty = q[1] - w[1], tz = q[2] - w[2]
+      const n = [ty * rz - tz * ry, tz * rx - tx * rz, tx * ry - ty * rx]
+      const length = Math.hypot(...n)
+      return n.map(x => x / length)
+    }
+    const levels = [0, .095, .22, .39, .58, .76, .91, .984, 1]
+    for (let i = 0; i < ribs * 5; i++) {
+      const a = sector * i / 5, e = sector * (i + 1) / 5
+      for (let j = 1; j < levels.length; j++) {
+        const lo = levels[j - 1], hi = levels[j]
+        const uv = lo === 0 ? [[a, 0], [e, hi], [a, hi]] : [[a, lo], [e, lo], [e, hi], [a, hi]]
+        const positions = uv.map(([theta, radius]) => canopy(theta, radius))
+        const normals = uv.map(([theta, radius]) => surfaceNormal(theta, radius))
+        const tex = positions.map(([x, , z]) => [.5 + .497 * x / radius, .5 + .497 * z / radius])
+        b.face(m.parasol, positions, 1, tex, normals)
+        b.face(m.lining, positions.slice().reverse().map(([x,y,z]) => [x, y - .0024, z]), 1,
+          tex.slice().reverse(), normals.slice().reverse().map(n => n.map(v => -v)))
       }
+      const p = canopy(a, 1), q = canopy(e, 1)
+      const hem = [p, q].map(([x,y,z]) => [x, y - .0031, z])
+      face(b, m.matte, 0x956957, [p, q, hem[1], hem[0]])
+    }
     rod(b, m.matte, c.wood, [0, -0.147, 0], [0, 0.906, 0], 0.0118, 0.0083, 14)
     rod(b, m.matte, c.red, [0, -0.155, 0], [0, -0.108, 0], 0.013, 0.013, 12)
     rod(b, m.metal, c.gold, [0, -0.116, 0], [0, -0.107, 0], 0.014, 0.014, 12)
@@ -58,6 +70,15 @@ export function parasol(m) {
       const hinge = canopy(a, 0.49)
       hinge[1] -= 0.012
       rod(b, m.matte, c.reed, [0.013 * Math.cos(a), 0.609, 0.013 * Math.sin(a)], hinge, 0.0038, 0.0029, 6)
+      const next = a + sector
+      // Three continuous passes of silk lace link the hub and the stretchers.
+      const lace = (theta, r, drop) => {
+        const p = canopy(theta, r)
+        return [p[0], p[1] - drop, p[2]]
+      }
+      for (const [r, height, color] of [[.31,.099,0x896448], [.37,.083,0xb07b57], [.43,.052,0x71857a]]) {
+        stroke(b, m.matte, color, [lace(a,r,height), lace(a+sector*.5,r-.022,height+.003), lace(next,r,height)], .00125, 5)
+      }
       const tip = canopy(a, 1.012)
       rod(b, m.matte, c.wood, pts.at(-1), [tip[0], tip[1] - 0.014, tip[2]], 0.0048, 0.0033, 6)
     }
@@ -68,6 +89,19 @@ export function parasol(m) {
       loop.push([0.006 + 0.014 * Math.sin(a), -0.184 + 0.039 * Math.cos(a), 0.005 * Math.sin(a * 2)])
     }
     stroke(b, m.matte, c.red, loop, 0.0026)
+    for (let i = 0; i < 11; i++) {
+      const t = i / 11, a = tau * t
+      const knot = k => [.0129 * Math.cos(k), -.145 + .0038 * (i + (k - a) / tau), .0129 * Math.sin(k)]
+      stroke(b, m.matte, i % 3 ? 0x8f3931 : 0xc47d55, [knot(a), knot(a + .9 * Math.PI), knot(a + tau)], .0017, 5)
+    }
+    oval(b, m.metal, c.darkGold, [.005, -.221, 0], [.0048, .0051, .0048])
+    oval(b, m.matte, 0x658c7e, [.005, -.230, 0], [.0065, .008, .0065])
+    for (let i = 0; i < 9; i++) {
+      const a = tau * i / 9
+      stroke(b, m.matte, i % 3 ? c.red : 0xc67760,
+        [[.005, -.237, 0], [.006 + .0035*Math.cos(a), -.25, .0035*Math.sin(a)],
+         [.008 + .006*Math.cos(a), -.275 + .003*Math.sin(3*a), .006*Math.sin(a)]], .0014, 5)
+    }
   })
 }
 export function lanternPiece(m, watch) {

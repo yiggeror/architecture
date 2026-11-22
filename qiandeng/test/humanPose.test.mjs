@@ -5,6 +5,7 @@ import { MeshBVH } from 'three-mesh-bvh'
 import { characterProfile, studyCast } from '../src/characterProfiles.js'
 import { createHumanRig, handGrip, solePoints } from '../src/humanRig.js'
 import { poseHuman, poseLandmark, posePeriod } from '../src/humanPose.js'
+import { portraitPerformance, stridePeriod } from '../src/characterActing.js'
 import { buildEquipment } from '../src/characterEquipment.js'
 import { buildPortrait, portraitMouth } from '../src/characterPortrait.js'
 import { shoes } from '../src/characterFootwear.js'
@@ -374,15 +375,39 @@ test('walking counter-rotates shoulders and hips, swings the opposite arm, and b
   assert.ok(straight < 16 && folded > 53 && folded < 84)
   assert.ok(correlation(legs, arms) < -0.78)
   assert.ok(correlation(hips, chest) < -0.91)
+  const stride = stridePeriod(p)
   for (const boundary of [0, 0.114, 0.435, 0.615, 1]) {
-    state.t = period * (boundary - 1e-6)
+    state.t = stride * (boundary - 1e-6)
     const before = poseHuman(rig, p, state),
       ankle = before.joints.lFoot.clone(),
       sole = before.feet.l.tip.clone()
-    state.t = period * (boundary + 1e-6)
+    state.t = stride * (boundary + 1e-6)
     const after = poseHuman(rig, p, state)
     assert.ok(ankle.distanceTo(after.joints.lFoot) < 0.00001, 'ankle at ' + boundary)
     assert.ok(sole.distanceTo(after.feet.l.tip) < 0.00001, 'toes at ' + boundary)
+  }
+})
+
+test('the merchant and scholar sustain a complete thought across four planted walking cycles', () => {
+  for (const [id, job] of [[47, 'umbrella'], [64, 'walk']]) {
+    const profile = characterProfile(id, job), rig = createHumanRig(profile)
+    const state = { t: 0, phase: 0, job, walking: true }
+    const stride = stridePeriod(profile), period = posePeriod(profile, state)
+    close(period, 4 * stride)
+    const resting = portraitPerformance(profile, state)
+    const glance = portraitPerformance(profile, state, (id === 47 ? 0.113 : 0.182) * period)
+    assert.ok(Math.abs(glance.eyeX - resting.eyeX) > 0.7)
+    close(glance.turn, 0)
+    close(glance.body, 0)
+    const seen = portraitPerformance(profile, state, 0.34 * period)
+    assert.ok(seen.turn > 0.7)
+    const look = (t) => poseHuman(rig, profile, { ...state, t }).orientations.head.clone()
+    assert.ok(look(0).angleTo(look(2 * stride)) > 0.3)
+    close(look(-0.000001).angleTo(look(period - 0.000001)), 0, 1e-7)
+    assert.ok(look(period - 0.000001).angleTo(look(0.000001)) < 0.00001)
+    const a = portraitPerformance(profile, state, -0.000001)
+    const b = portraitPerformance(profile, state, period - 0.000001)
+    for (const key of ['eyeX', 'eyeY', 'blink', 'turn', 'body']) close(a[key], b[key])
   }
 })
 
@@ -405,8 +430,9 @@ test('the actual twelve tools and seated study figures keep fixed bone lengths, 
         if (!grips[side]) continue
         const tip = pose.joints[side + 'Hand'],
           q = pose.orientations[side + 'Hand']
+        const socket = grips[side].localContact?.clone() ?? v(handGrip)
         assert.ok(
-          v(handGrip).applyQuaternion(q).add(tip).distanceTo(grips[side].point) < 0.0003,
+          socket.applyQuaternion(q).add(tip).distanceTo(grips[side].point) < 0.0003,
           person.job + ' ' + side,
         )
         assert.ok(
@@ -422,8 +448,12 @@ test('the actual twelve tools and seated study figures keep fixed bone lengths, 
         )
         mouthHits++
       }
-      if (person.job === 'lute')
+      if (person.job === 'lute') {
         assert.ok(pose.joints.lForearm.y < pose.joints.lUpperArm.y, 'fretting elbow rests alongside the body')
+        const arm = pose.joints.lHand.clone().sub(pose.joints.lForearm)
+        const palm = new T.Vector3(0, -1, 0).applyQuaternion(pose.orientations.lHand)
+        assert.ok(arm.angleTo(palm) < Math.PI / 6, 'fretting palm follows the lifted forearm')
+      }
     }
   }
   assert.ok(contacts > 1100 && mouthHits === 73)

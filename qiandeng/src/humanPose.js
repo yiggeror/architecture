@@ -1,5 +1,6 @@
 import * as T from 'three'
 import { handGrip, solePoints } from './humanRig.js'
+import { actingPeriod, portraitPerformance, stridePeriod } from './characterActing.js'
 
 const tau = 2 * Math.PI
 const sides = ['l', 'r']
@@ -40,10 +41,9 @@ const angleBetween = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a))
 const framesByRig = new WeakMap()
 
 export function posePeriod(profile = {}, state = {}) {
-  if (state.walking ?? state.job === 'walk') {
-    const length = (profile.height ?? 1) * (profile.legLength ?? 1)
-    return 1.22 * Math.sqrt(length) * (1 + 0.027 * Math.sin((profile.seed ?? 0) % 113))
-  }
+  const dramatic = actingPeriod(profile, state)
+  if (dramatic) return dramatic
+  if (state.walking ?? state.job === 'walk') return stridePeriod(profile)
   switch (state.job) {
     case 'row':
       return tau / 1.73
@@ -492,7 +492,9 @@ function torso(c, profile, state, grips) {
   c.shoeWidth = clamp(1 + ((profile.girth ?? 1) - 1) * 0.23, 0.94, 1.07)
   c.walking = state.walking ?? state.job === 'walk'
   c.seated = !c.walking && ['row', 'sit', 'lute'].includes(state.job)
-  c.period = posePeriod(profile, state)
+  c.actionPeriod = posePeriod(profile, state)
+  c.period = c.walking ? stridePeriod(profile) : c.actionPeriod
+  c.acting = portraitPerformance(profile, state)
   const t = state.t ?? 0,
     phase = state.phase ?? 0
   c.cycles = t / c.period + phase / tau
@@ -573,50 +575,74 @@ function torso(c, profile, state, grips) {
     roll += 0.043
     chestTilt += 0.048
   }
-  // The merchant watches the open side of her parasol. Her bearing stays
-  // level while the raised left shoulder takes the weight of its bamboo shaft.
-  if (c.design === 'silk' && state.job === 'umbrella') {
-    chestYaw *= 0.87
-    headYaw -= 0.215 + 0.042 * cos
-    upperGaze = 0.35 * headYaw
-    headPitch -= 0.022
-    headRoll += 0.026
-    x += 0.005 * h
-  }
-  // The musician turns the left ear towards the neck of the pipa, following
-  // the fretting hand without pulling the seated pelvis off its bench.
-  if (c.design === 'lute' && state.job === 'lute') {
-    chestYaw += 0.063 + 0.019 * sin
-    headYaw += 0.198 + 0.037 * Math.sin(c.angle - 0.37)
-    upperGaze = 0.35 * headYaw
-    headPitch += 0.054 + 0.018 * cos
-    headRoll -= 0.066 + 0.014 * sin
-    chestTilt -= 0.027
-    z += 0.006 * h
-  }
-  // The scholar carries an open fan near the right breast. His sternum
-  // rises above relaxed shoulders; he glances down across the paper.
-  if (c.design === 'scholar' && state.job === 'walk') {
-    spineTilt -= 0.029
-    chestTilt -= 0.012
-    shoulderBack += 0.035
-    shoulderLift -= 0.044
-    headYaw -= 0.111 + 0.028 * cos
-    upperGaze = 0.35 * headYaw
-    headPitch += 0.031 + 0.019 * cos
-    headRoll += 0.015
-  }
-  // The drummer drives each alternating stroke from the feet and hips.
-  // An open chest and a stable, wider stance leave both forearms free.
-  if (c.design === 'drummer' && state.job === 'drum') {
-    const beat = Math.sin(2 * c.angle - 0.38)
-    x += 0.027 * h * beat
-    y -= 0.011 * h
-    roll += 0.028 * beat
-    chestYaw += 0.045 * beat
-    chestTilt -= 0.056
-    shoulderBack += 0.075
-    headPitch += 0.019
+  const acting = c.acting
+  let shoulderBias = 0, shoulderAdvance = 0
+  if (acting) {
+    if (c.design === 'silk') {
+      // The customer is on her unencumbered right. Turn above the loaded
+      // shoulder, take the breath in, show the goods, then let the arm settle.
+      const { body, turn, gesture, breath, nod } = acting
+      x += h * (0.011 - 0.031 * body)
+      z += h * (0.004 + 0.012 * gesture)
+      twist -= 0.058 * body
+      roll += 0.025 + 0.028 * body
+      chestYaw = 0.78 * chestYaw - 0.052 - 0.24 * body
+      spineTilt -= 0.038 + 0.045 * breath
+      chestTilt += 0.018 * nod - 0.018 * breath
+      headYaw -= 0.064 + 0.47 * turn
+      upperGaze = 0.45 * headYaw
+      headPitch += 0.007 - 0.083 * turn + 0.095 * nod
+      headRoll += 0.009 + 0.049 * gesture
+      shoulderBias = 0.061 + 0.025 * gesture
+      shoulderAdvance = -0.087 * gesture
+    } else if (c.design === 'scholar') {
+      // The fan keeps the right elbow folded. He first reads low on that
+      // side, then lifts his chin to follow someone crossing the street.
+      const { body, turn, breath } = acting
+      x += h * (-0.013 + 0.025 * body)
+      roll += -0.027 + 0.019 * body
+      chestYaw += -0.024 + 0.042 * body
+      spineTilt -= 0.058 + 0.019 * breath
+      chestTilt -= 0.018 + 0.02 * body
+      shoulderBack += 0.041
+      shoulderLift -= 0.078
+      shoulderBias = -0.034 + 0.025 * body
+      headYaw += -0.32 + 0.44 * turn
+      upperGaze = 0.43 * headYaw
+      headPitch += 0.155 - 0.19 * turn + 0.027 * body
+      headRoll += 0.071 - 0.092 * body
+    } else if (c.design === 'lute') {
+      // Sit into the bench throughout the bar. Lateral movement belongs to
+      // the rib cage, keeping the bowl supported on the same point of the lap.
+      const { body, turn, breath, accent } = acting
+      chestYaw += 0.084 - 0.076 * body
+      chestTilt += -0.054 - 0.046 * breath + 0.033 * accent
+      headYaw += 0.308 - 0.256 * turn
+      headPitch += 0.07 - 0.165 * turn + 0.034 * accent
+      upperGaze = 0.4 * headYaw
+      headRoll -= 0.067 + 0.082 * body
+      shoulderBias = 0.03 + 0.035 * breath - 0.043 * accent
+      shoulderAdvance = 0.033 * body
+      z += 0.006 * h
+    } else if (c.design === 'drummer') {
+      // Keep the lowered shoulder and bent knee on the striking side; the
+      // opposite shoulder is already lifting as the stick leaves the skin.
+      const { transfer, turn, rebound, accent } = acting
+      x += 0.041 * h * transfer
+      y += h * (-0.017 + 0.019 * rebound - 0.008 * accent)
+      z += h * (0.009 - 0.013 * rebound)
+      roll -= 0.049 * transfer
+      twist += 0.055 * transfer
+      chestYaw = -0.128 * transfer
+      chestTilt += -0.069 - 0.055 * rebound + 0.041 * accent
+      shoulderBack += 0.09
+      shoulderBias = -0.064 * transfer
+      shoulderAdvance = 0.078 * transfer
+      headYaw += 0.177 * turn
+      upperGaze = 0.34 * headYaw
+      headPitch += 0.068 - 0.064 * rebound
+      headRoll -= 0.029 * transfer
+    }
   }
   if (load) {
     y -= 0.197 * h * load
@@ -648,7 +674,7 @@ function torso(c, profile, state, grips) {
     pelvis.bone.position.y -= Math.min(0.14 * h, lower)
     forward(pelvis)
   }
-  const breath = sin * (c.walking ? 0.009 : 0.018)
+  const breath = acting ? (acting.breath - 0.42) * 0.033 : sin * (c.walking ? 0.009 : 0.018)
   rotate(c, 'spine', spineTilt - breath * 0.38, chestYaw * 0.34, -roll * 0.32)
   rotate(c, 'chest', chestTilt + breath, chestYaw * 0.66, -roll * 0.48)
   rotate(
@@ -667,13 +693,12 @@ function torso(c, profile, state, grips) {
   )
   for (const side of sides) {
     const sign = side === 'l' ? 1 : -1
-    const lifted = c.design === 'silk' && state.job === 'umbrella' && sign > 0 ? 0.034 : 0
     rotate(
       c,
       side + 'Clavicle',
       0,
-      sign * (shoulderBack - 0.025 - breath * 0.28),
-      sign * (shoulderLift + lifted + breath * 0.42),
+      sign * (shoulderBack - 0.025 - breath * 0.28) + shoulderAdvance,
+      sign * (shoulderLift + breath * 0.42) + shoulderBias,
     )
     // Shoulder-mounted equipment follows the girdle. A previous frame's
     // humerus twist must not move a shoulder pad when the timeline is scrubbed.
@@ -820,6 +845,17 @@ function freeWrist(c, state, side, sign, out) {
       break
     case 'umbrella':
       if (sign > 0) width(0.235, sh.y - 0.08 * h, 0.155)
+      else if (c.acting) {
+        // A low invitation with a bent elbow. Keep the hand outside the hip
+        // and open the forearm towards the customer as the palm rises.
+        const { gesture, present } = c.acting
+        c.v.set(
+          sh.x - h * (0.108 + 0.119 * present),
+          sh.y - h * (0.196 + 0.049 * present),
+          sh.z + h * (0.273 - 0.042 * present),
+        )
+        out.lerp(c.v, gesture)
+      }
       break
     case 'carrier':
       if (sign < 0) width(0.19, sh.y + 0.013 * h, 0.2)
@@ -833,12 +869,13 @@ function freeWrist(c, state, side, sign, out) {
 }
 function solveArm(c, state, side, sign, grip) {
   const chain = c.limbs[side].arm,
-    hand = c.hands[side]
+    hand = c.hands[side],
+    localContact = grip?.localContact ?? gripOffset
   hand.gripping = !!grip?.point
   if (hand.gripping) {
     gripRotation(c, grip, hand.rotation)
     vector(grip.point, hand.contact)
-    c.v.copy(gripOffset).applyQuaternion(hand.rotation)
+    vector(localContact, c.v).applyQuaternion(hand.rotation)
     hand.target.copy(hand.contact).sub(c.v)
     reachShoulder(c, side, hand.target)
   } else freeWrist(c, state, side, sign, hand.target)
@@ -853,6 +890,8 @@ function solveArm(c, state, side, sign, grip) {
   // aim it down and forward alongside the pear-shaped soundboard.
   if (state.job === 'lute' && sign > 0) c.pole.set(0.6, -1.2, 0.5)
   if (state.job === 'flute') c.pole.set(sign * 0.78, -1.05, 0.5)
+  const greeting = c.design === 'silk' && sign < 0 && !hand.gripping ? c.acting?.gesture ?? 0 : 0
+  if (greeting) c.pole.x += 0.57 * greeting
   // A wide instrument can require a particular approach to the string or
   // handle. Its actor-space pole guides the elbow about the shoulder-wrist line.
   if (hand.gripping && grip.elbowPole) {
@@ -861,8 +900,21 @@ function solveArm(c, state, side, sign, grip) {
   }
   solve(c, chain, hand.target, c.pole)
   if (hand.gripping) orient(c, chain.tip, hand.rotation)
-  else rotate(c, side + 'Hand', -0.055, sign * 0.024, sign * 0.04)
-  hand.actual.copy(gripOffset).applyQuaternion(chain.tip.q).add(chain.tip.p)
+  else {
+    rotate(c, side + 'Hand', -0.055, sign * 0.024, sign * 0.04)
+    if (greeting) {
+      // Supinate along the approaching forearm. The right palm faces upward
+      // and the fingers extend toward the customer without bending at the wrist.
+      c.w.subVectors(chain.b.p, chain.tip.p).normalize()
+      c.a.set(0.29, 1, 0.06)
+      c.a.addScaledVector(c.w, -c.a.dot(c.w)).normalize()
+      c.b.crossVectors(c.a, c.w)
+      c.delta.setFromRotationMatrix(c.basis.makeBasis(c.a, c.w, c.b))
+      c.q.copy(chain.tip.q).slerp(c.delta, greeting)
+      orient(c, chain.tip, c.q)
+    }
+  }
+  vector(localContact, hand.actual).applyQuaternion(chain.tip.q).add(chain.tip.p)
   hand.residual = hand.gripping ? hand.actual.distanceTo(hand.contact) : 0
 }
 
@@ -876,7 +928,10 @@ export function poseHuman(rig, profile, state, grips) {
     solveFoot(c, side, sign)
     solveArm(c, state, side, sign, grips?.[side])
   }
+  // Contact diagnostics count individual footsteps. The exported acting
+  // cycle can span several complete strides before attention returns.
   c.audit.period = c.period
+  c.audit.actionPeriod = c.actionPeriod
   c.audit.phase = c.angle
   return c.audit
 }

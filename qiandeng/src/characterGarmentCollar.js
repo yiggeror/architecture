@@ -133,7 +133,7 @@ function facing(a, support, path, width, lift, colour, stitch, bolts, top, openi
 }
 export function wrapCollar(a, support, c, style, opening) {
   const formal = style === 'silk',
-    ground = formal ? tint(c.mint, c.cream, 0.6) : tint(c.blush, c.cream, 0.73)
+    ground = formal ? tint(c.mint, c.cream, 0.6) : tint(c.blush, c.cream, 0.58)
   // A short standing collar on the merchant, a softer low shawl-cut collar
   // on the player. The two fronts close to the wearer's right.
   const top = (th) => {
@@ -214,7 +214,7 @@ export function wrapCollar(a, support, c, style, opening) {
     under,
     (v) => (formal ? 0.024 : 0.023) * (1 - 0.6 * step(0.77, 1, v)),
     () => offsetTop,
-    tint(ground, formal ? c.jade : c.rose, 0.27),
+    tint(ground, formal ? c.jade : c.rose, formal ? 0.27 : 0.49),
     formal ? c.jade : c.rose,
     1,
     top,
@@ -227,7 +227,7 @@ export function wrapCollar(a, support, c, style, opening) {
     (v) => (formal ? 0.028 : 0.026) * (1 - 0.3 * step(0.85, 1, v)),
     (v) => over + 0.001 * step(0.44, 0.85, v),
     formal ? c.cream : tint(c.cream, c.blush, 0.22),
-    formal ? tint(c.jade, c.cream, 0.32) : tint(c.plum, c.blush, 0.62),
+    formal ? tint(c.jade, c.cream, 0.32) : tint(c.plum, c.blush, 0.31),
     1,
     top,
     opening

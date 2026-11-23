@@ -206,6 +206,9 @@ export function characterStreetLight(renderer, world, city) {
   }
   return {
     shade,
+    prepare(group) {
+      for (const entry of actors) if (entry.group === group) return shadow.prepare(entry)
+    },
     update(t, camera) {
       updateCarriedLights()
       let closest, best = Infinity

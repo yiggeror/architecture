@@ -97,12 +97,12 @@ export function castRoute(p, t, out) {
   return out
 }
 const person = new T.Object3D()
-export function figurePlacement(p, at, matrix) {
+export function figurePlacement(p, at, matrix, shipMatrix = p.ship?.group.matrixWorld) {
   person.position.set(at.x, at.y, at.z)
   person.rotation.set(0, at.yaw, 0)
   person.scale.setScalar(p.size)
   person.updateMatrix()
-  if (p.ship) matrix.multiplyMatrices(p.ship.group.matrixWorld, person.matrix)
+  if (shipMatrix) matrix.multiplyMatrices(shipMatrix, person.matrix)
   else matrix.copy(person.matrix)
   return matrix
 }

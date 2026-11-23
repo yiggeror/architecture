@@ -1,10 +1,13 @@
 import * as T from 'three'
+import { finishGpu } from './gpuFence.js'
 import { clockworkContact } from './clockwork.js'
 import { scenicDetail } from './detail.js'
 import { Mason } from './mesh.js'
 import { materials } from './kit.js'
 import { stations, updateLens } from './stations.js'
+import { visibleLight } from './visibleLight.js'
 import { lightRegistry, lightCity } from './lighting.js'
+import { characterUpload } from './characterUpload.js'
 import { characterStreetLight } from './characterStreetLight.js'
 import { navigation } from './walk.js'
 import { courtyardCollision } from './collision.js'
@@ -62,7 +65,14 @@ function opaqueOrder(a, b) {
   return bandB - bandA || a.material.id - b.material.id || a.z - b.z || a.id - b.id
 }
 async function openCity() {
-  const renderer = new T.WebGLRenderer({ antialias: false, depth: false, powerPreference: 'high-performance' })
+  let renderer
+  try {
+    renderer = new T.WebGLRenderer({ antialias: false, depth: false, powerPreference: 'high-performance' })
+  } catch (error) {
+    console.error(error)
+    window.showLoadingError('浏览器未能建立 WebGL 2 绘图环境。请在支持 WebGL 2 的浏览器中打开灯城。')
+    return
+  }
   const gl = renderer.getContext(),
     info = gl.getExtension('WEBGL_debug_renderer_info')
   const software = Boolean(
@@ -174,8 +184,15 @@ async function openCity() {
   world.characterFloor = (x, z, nominalY) => collision.floor(x, z, nominalY + 0.085, 0.195) ?? nominalY
   const portraitLight = characterStreetLight(renderer, world, lighting.common)
   world.shadeCharacter = portraitLight.shade
+  const upload = characterUpload(renderer, scene, camera)
+  world.warmCharacter = async (group, actor) => {
+    await upload(group)
+    await portraitLight.prepare(group)
+    statics.userData.trackFigure(group, actor?.ship)
+  }
   lighting.shade(statics)
   lighting.shade(moving, software)
+  statics.userData.visibleLight = visibleLight(renderer, statics, lighting.common)
   const cinema = film(renderer, scene, statics, camera, software, lighting.common),
     walk = navigation(canvas, camera, collision)
   let day = false,
@@ -256,11 +273,16 @@ async function openCity() {
       if (best >= portrait.distance - .035) break
     }
     if (best > 0.33) walk.arrive(eye.toArray(), focus.toArray())
+    return fleet.prepareSubject(Number(key), day)
   }
-  visitFigure()
+  await visitFigure()
   addEventListener('hashchange', visitFigure)
   const coarsePointer = window.matchMedia('(pointer: coarse)')
+  let refinementTurn = 0
+  const refinement = (statics.userData.refinement = { main: true, used: false })
   function draw(t) {
+    refinement.main = refinementTurn++ % 3 !== 2
+    refinement.used = false
     northFalls.update(t, day)
     sky.update(t, day)
     fleet.update(t, day, camera)
@@ -285,8 +307,7 @@ async function openCity() {
     cinema.focus(sitter)
     detail.update(camera, size.y, software || coarsePointer.matches)
     // Three uses the same moving transforms in every river view and the main view.
-    for (const object of scene.children)
-      if (object.matrixWorldAutoUpdate) object.updateMatrixWorld()
+    for (const object of scene.children) if (object.matrixWorldAutoUpdate) object.updateMatrixWorld()
     const stamp = t * 1000
     for (const surface of waters) surface.reflect(camera, stamp)
     cinema.draw(stamp)
@@ -294,22 +315,29 @@ async function openCity() {
   // Keep input from queueing several obsolete camera views behind a busy GPU.
   // The very first fence also keeps the frontispiece up until the gate, boats
   // and mirrors have actually finished drawing at festival time zero.
-  const submitted = []
-  let firstSubmitted = false
+  let pending = null, submittedAt = 0
   function frame(now) {
-    while (submitted.length && gl.clientWaitSync(submitted[0], 0, 0) !== gl.TIMEOUT_EXPIRED)
-      gl.deleteSync(submitted.shift())
+    let inputTurn = false
+    if (pending && gl.clientWaitSync(pending, 0, 0) !== gl.TIMEOUT_EXPIRED) {
+      gl.deleteSync(pending)
+      pending = null
+      scene.userData.slowFrame = performance.now() - submittedAt > 78
+      // During a long presentation Chromium can deliver a waiting pointer just
+      // after rAF. Give it a turn before committing another idle camera view.
+      inputTurn = scene.userData.slowFrame &&
+        (!walk.hasInput() || navigator.scheduling?.isInputPending?.({ includeContinuous: true }))
+    }
     if (!document.hidden && !pinned && !gl.isContextLost()) {
-      if (firstSubmitted && !document.documentElement.dataset.ready) {
-        if (!submitted.length) {
+      if (started && !document.documentElement.dataset.ready) {
+        if (!pending) {
           window.updateLoading('水关初照', totalStages, totalStages)
           window.finishLoading()
           last = now
         }
-      } else if (submitted.length < 2) {
+      } else if (!pending && !inputTurn) {
         if (started) elapsed += Math.min(.23, Math.max(0, now - last) / 1000)
         resize()
-        walk.step(now)
+        walk.step(performance.now())
         try {
           draw(elapsed)
         } catch (error) {
@@ -317,9 +345,12 @@ async function openCity() {
           window.showLoadingError('场景绘制遇到问题，请重新打开灯城。')
           return
         }
-        const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)
-        if (fence) { submitted.push(fence); gl.flush() }
-        firstSubmitted = started = true
+        pending = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)
+        if (pending) {
+          submittedAt = performance.now()
+          gl.flush()
+        }
+        started = true
         last = now
       }
     } else {
@@ -376,13 +407,33 @@ async function openCity() {
     }
   }
   await advance('水关初照')
+  await fleet.prepareOpening(camera, day, 0)
+  // Compile the moving camera's surface and mirror paths and upload nearby
+  // distance levels while the frontispiece still owns the screen.
+  const opening = camera.position.clone()
+  const ahead = camera.getWorldDirection(new T.Vector3()).multiplyScalar(.84)
+  detail.update(camera, size.y, software || coarsePointer.matches)
+  collision.move(camera.position, ahead.x, ahead.y, ahead.z)
+  camera.updateMatrixWorld()
+  statics.userData.preparingFlight = true
+  try {
+    draw(0)
+    await finishGpu(gl)
+  } finally {
+    statics.userData.preparingFlight = false
+    camera.position.copy(opening)
+    camera.updateMatrixWorld()
+    detail.settle()
+    cinema.invalidate()
+    for (const surface of waters) surface.invalidate()
+  }
   requestAnimationFrame(frame)
 }
 requestAnimationFrame(() =>
   requestAnimationFrame(() =>
     openCity().catch((e) => {
       console.error(e)
-      window.showLoadingError('场景启动遇到问题。请启用浏览器的 WebGL 2 硬件加速后重新打开。')
+      window.showLoadingError('灯城准备过程中断，请重新打开页面。')
     }),
   ),
 )

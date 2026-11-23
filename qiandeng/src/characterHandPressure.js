@@ -4,7 +4,7 @@ import { posePeriod } from './humanPose.js'
 // Each curled finger bears differently against the narrow drumstick. On the
 // downstroke the pad flattens toward the stick and widens along its axis.
 // Vertices already touching the grip retain their bearing radius.
-export function drumPressure(mesh, side, profile, radius, wrist, digits) {
+export function drumPressure(mesh, radius, digits) {
   const geometry = mesh.geometry,
     rest = geometry.attributes.position
   const pressed = geometry.clone()
@@ -46,14 +46,12 @@ export function drumPressure(mesh, side, profile, radius, wrist, digits) {
   geometry.morphAttributes.normal = [normal]
   mesh.updateMorphTargets()
   pressed.dispose()
+}
+export function drumHandMotion(mesh, side, profile) {
   const cycle = posePeriod(profile, { job: 'drum' })
-  return {
-    mesh,
-    wrist,
-    update(state) {
-      const stroke =
-        (((state.t ?? 0) * Math.PI * 2) / cycle + (state.phase ?? 0)) * 2 + (side === 'r' ? Math.PI : 0)
-      mesh.morphTargetInfluences[0] = (0.5 + 0.5 * Math.cos(stroke + 0.12)) ** 4
-    },
+  return (state) => {
+    const stroke =
+      (((state.t ?? 0) * Math.PI * 2) / cycle + (state.phase ?? 0)) * 2 + (side === 'r' ? Math.PI : 0)
+    mesh.morphTargetInfluences[0] = (0.5 + 0.5 * Math.cos(stroke + 0.12)) ** 4
   }
 }

@@ -1,10 +1,10 @@
 import * as T from 'three'
 import { createHumanRig } from './humanRig.js'
 import { poseHuman } from './humanPose.js'
-import { buildPortrait } from './characterPortrait.js'
+import { buildPortrait, buildPortraitArt } from './characterPortrait.js'
 import { buildClothing } from './characterClothes.js'
-import { buildExtremities } from './characterHands.js'
-import { buildEquipment } from './characterEquipment.js'
+import { buildExtremities, buildExtremityArt } from './characterHands.js'
+import { buildEquipment, buildEquipmentArt } from './characterEquipment.js'
 
 // A studio sitter and a close pedestrian own the identical model. Neighbours
 // can share an atlas or piece of geometry until the last of them leaves view.
@@ -36,18 +36,34 @@ function resourcesOf(group, materialsOnly = false) {
   return resources
 }
 
-export function createCharacter(profile, job = profile.job) {
+export function buildCharacterArt(profile, job = profile.job, rig = createHumanRig(profile)) {
+  const clothing = buildClothing(profile, rig),
+    portrait = buildPortraitArt(profile),
+    extremities = buildExtremityArt(profile, rig, job),
+    equipment = buildEquipmentArt(profile, job)
+  return { clothing, portrait, extremities, equipment, forearmSkin: rig.forearmSkin }
+}
+
+export function createCharacter(profile, job = profile.job, prepared) {
   const rig = createHumanRig(profile),
     group = new T.Group()
   group.name = '人物·' + profile.name
   group.userData.personId = profile.id
-  group.add(rig.root, buildClothing(profile, rig))
-  const portrait = buildPortrait(profile)
+  const art = prepared ?? buildCharacterArt(profile, job, rig)
+  if (prepared) {
+    rig.forearmSkin = art.forearmSkin
+    for (const part of [art.clothing, art.extremities.group])
+      part.traverse((mesh) => {
+        if (mesh.isSkinnedMesh) mesh.bind(rig.skeleton, mesh.bindMatrix)
+      })
+  }
+  group.add(rig.root, art.clothing)
+  const portrait = buildPortrait(profile, art.portrait)
   portrait.scale.multiplyScalar(profile.height)
   rig.bones.head.add(portrait)
-  const extremities = buildExtremities(profile, rig, job)
-  if (extremities?.group) group.add(extremities.group)
-  const equipment = buildEquipment(profile, rig, job)
+  const extremities = buildExtremities(profile, rig, job, art.extremities)
+  group.add(extremities.group)
+  const equipment = buildEquipment(profile, rig, job, art.equipment)
   group.add(equipment.group)
   const releaseSource = retain(resourcesOf(group))
   let releaseLighting,

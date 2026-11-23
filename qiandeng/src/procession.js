@@ -2,7 +2,7 @@ import * as T from 'three'
 import { buildVessel, dockWork } from './fleetBoats.js'
 import { carpSilk } from './fleetCarp.js'
 import { cutPaper, pennants, waterOfferings } from './fleetOrnaments.js'
-import { locate, traffic } from './fleetRoute.js'
+import { placeVessel, traffic } from './fleetRoute.js'
 import { wakes } from './fleetWater.js'
 import { protectPassengers } from './fleetContact.js'
 import { boatDistance } from './fleetDistance.js'
@@ -68,6 +68,7 @@ export function procession(scene, m, world) {
       ships,
       (group) => world.shadeCharacter?.(group),
       (x, z, y) => world.characterFloor?.(x, z, y) ?? y,
+      (group) => world.warmCharacter?.(group),
     ),
     flags = pennants(ships, m)
   const detail = boatDistance(ships, m)
@@ -85,18 +86,9 @@ export function procession(scene, m, world) {
     frame++
     silk.emissiveIntensity = day ? 0.08 : 0.58
     for (let i = 0; i < ships.length; i++) {
-      const s = ships[i],
-        p = locate(s.spec, t, s.pose),
-        g = s.group
+      const s = ships[i], g = s.group
       if (continuous) s.previousInverse.copy(s.inverse)
-      const rock = 0.65 + s.spec.beam * 0.14
-      g.position.set(p.x, 0.025 * Math.sin(t * 1.42 + i) + 0.012 * Math.sin(t * 2.07 + 0.35 * i), p.z)
-      g.rotation.set(
-        (0.0075 * Math.sin(t * 1.36 + i * 0.8)) / rock,
-        Math.atan2(p.dx, p.dz),
-        (0.012 * Math.sin(t * 1.67 + i * 0.95)) / rock,
-        'YXZ',
-      )
+      placeVessel(s.spec, i, t, g, s.pose)
       const stroke = t * 1.73 + i * 0.77
       for (const o of s.oars) {
         const phase = stroke + o.z * 0.09 + o.s * 0.13
@@ -143,6 +135,8 @@ export function procession(scene, m, world) {
     update,
     block,
     subject: people.subject,
+    prepareSubject: people.prepareSubject,
+    prepareOpening: people.prepareOpening,
     protect: (eye, clearance) => displace(eye, clearance, frame, continuous),
   }
 }

@@ -89,7 +89,7 @@ EVENTS = """() => {
   window.flightInputListening=true;
   for (const name of ['keydown','keyup','pointerdown','pointerup','pointercancel'])
     document.addEventListener(name,e=>flightInputEvents.push({name, trusted:e.isTrusted,
-      ms:performance.now(),code:e.code,target:e.target.closest('#stick')?'stick':'canvas'}),true);
+      ms:e.timeStamp,code:e.code,target:e.target.closest('#stick')?'stick':'canvas'}),true);
 }"""
 
 
@@ -105,7 +105,7 @@ def rate(view, start, begin, end, target):
     events = [r for r in records if target(r) and r["name"] in [begin, end]]
     require(len(events) == 2 and all(r["trusted"] for r in events), "trusted press and release")
     seconds = (events[1]["ms"] - events[0]["ms"]) / 1000
-    length = travel(start, view.pose())
+    length = travel(start, view.drawn_pose())
     return round(length / seconds, 2)
 
 
@@ -119,13 +119,18 @@ def horizontal_strafe(before, after):
 
 
 def interrupted_keyboard(view):
-    # Software WebGL can occupy the foreground main thread for more than a second.
-    before = position(view, 300)
+    position(view, 300)
     view.page.keyboard.down("w")
-    view.page.evaluate("() => {const start=performance.now(); while(performance.now()-start<1800){} }")
+    before, after = view.page.evaluate("""async () => {
+      const before = viewerPose(), frame = viewerFrames, start = performance.now();
+      while (performance.now() - start < 1800) {}
+      while (viewerFrames === frame) await new Promise(requestAnimationFrame);
+      return [before, viewerPose()];
+    }""")
     view.page.keyboard.up("w")
-    measured = rate(view, before, "keydown", "keyup", lambda event: event.get("code") == "KeyW")
-    require(104 < measured < 112, f"foreground stall lost held input at {measured:.2f} m/s")
+    view.drawn_pose()
+    distance = travel(before, after)
+    require(distance <= 10.801, f"first frame after the foreground stall travelled {distance:.3f} m")
 
     before = position(view, 300)
     view.page.keyboard.down("w")
@@ -146,7 +151,7 @@ def interrupted_keyboard(view):
     view.page.keyboard.up("w")
     drift = math.dist(stopped, view.pose()["eye"])
     require(drift < 1e-7, f"returning to the tab advanced the old key by {drift:.5f} m")
-    return {"foreground_stall_m_s": measured, "return_to_tab_drift_m": drift}
+    return {"first_frame_after_stall_m": round(distance, 3), "return_to_tab_drift_m": drift}
 
 
 def desktop(view):
@@ -185,12 +190,12 @@ def desktop(view):
     view.page.keyboard.down("s")
     view.page.wait_for_timeout(260)
     view.page.keyboard.up("s")
-    result["pitched_s_m"] = round(travel(start, view.pose(), -1), 3)
+    result["pitched_s_m"] = round(travel(start, view.drawn_pose(), -1), 3)
     start = view.pose()
     view.page.keyboard.down("a")
     view.page.wait_for_timeout(260)
     view.page.keyboard.up("a")
-    result["lateral_m"] = horizontal_strafe(start, view.pose())
+    result["lateral_m"] = horizontal_strafe(start, view.drawn_pose())
     return result
 
 
@@ -235,7 +240,7 @@ def mobile(view):
     r = (2, 0.89 * w, 0.49 * h)
     view.touch("touchMove", l, r)
     view.page.wait_for_function("g=>Math.abs(viewerPose().gaze[1]-g[1])>.13", arg=first["gaze"])
-    steer = view.pose()
+    steer = view.drawn_pose()
     view.page.wait_for_function("p=>Math.hypot(...viewerPose().eye.map((x,i)=>x-p[i]))>1", arg=steer["eye"])
     result["gaze_turn_deg"] = round(angle(first["gaze"], steer["gaze"]), 2)
     result["steered_travel_m"] = round(travel(steer, view.pose()), 3)
@@ -251,7 +256,7 @@ def mobile(view):
     view.touch("touchStart", l)
     view.page.wait_for_timeout(320)
     view.touch("touchEnd")
-    end = view.pose()
+    end = view.drawn_pose()
     result["reverse_m"] = round(travel(stopped, end, -1), 3)
     view.page.wait_for_timeout(280)
     require(view.pose() == end, "release hovers")
@@ -260,12 +265,12 @@ def mobile(view):
     view.touch("touchStart", (1, x, y - 0.34 * width))
     view.page.wait_for_timeout(270)
     view.touch("touchEnd")
-    result["looking_down_forward_m"] = round(travel(start, view.pose()), 3)
+    result["looking_down_forward_m"] = round(travel(start, view.drawn_pose()), 3)
     start = view.pose()
     view.touch("touchStart", (1, x + 0.34 * width, y))
     view.page.wait_for_timeout(240)
     view.touch("touchEnd")
-    result["lateral_m"] = horizontal_strafe(start, view.pose())
+    result["lateral_m"] = horizontal_strafe(start, view.drawn_pose())
     require(
         view.page.locator("button").filter(has_text="上升").count() == 0
         and view.page.locator("button").filter(has_text="下降").count() == 0,

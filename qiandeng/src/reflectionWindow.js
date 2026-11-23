@@ -73,7 +73,8 @@ export function reflectionWindow(target, level, primary) {
     // Wave normals, the two displaced filter taps and a complete boundary
     // texel fit inside this guard at every existing reflection resolution.
     const w = target.width, h = target.height
-    const marginX = .012 * w + 3, marginY = .012 * h + 3
+    const margin = primary ? .055 : .012
+    const marginX = margin * w + 3, marginY = margin * h + 3
     const left = Math.max(0, Math.floor(bounds.min.x * w - marginX))
     const right = Math.min(w, Math.ceil(bounds.max.x * w + marginX))
     const bottom = Math.max(0, Math.floor(bounds.min.y * h - marginY))

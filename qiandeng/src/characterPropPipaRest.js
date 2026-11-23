@@ -68,25 +68,25 @@ function garmentOnThighs(rig, profile, state, grips) {
   return new MeshBVH(geometry)
 }
 
-export function fittedPipa(rig, profile, instrument) {
+export function fittedPipa(rig, profile, instrument, fit = {}) {
   const h = profile.height ?? 1,
     surfaces = ['桐木面板', '梨腹背板', '琴身侧沿与封口']
-  const wood = surfaces.map(
-    (name) => new MeshBVH(instrument.getObjectByName(name).children[0].geometry, { indirect: true }),
-  )
+  let wood
   const collision = { intersectsTriangles: (a, b) => a.intersectsTriangle(b) }
-  let fittedSeat, fittedLeft, fittedRight, mean, cosine, sine
   return (state, grips, phase) => {
     const seat = grips.seat,
       footL = grips.feet?.l.point.y,
       footR = grips.feet?.r.point.y
     instrument.position.set(-0.092 * h, seat + 0.176 * h, 0.306 * h)
-    if (fittedSeat !== seat || fittedLeft !== footL || fittedRight !== footR) {
-      fittedSeat = seat
-      fittedLeft = footL
-      fittedRight = footR
+    if (fit.seat !== seat || fit.left !== footL || fit.right !== footR) {
+      fit.seat = seat
+      fit.left = footL
+      fit.right = footR
       const cloth = garmentOnThighs(rig, profile, state, grips)
       if (cloth) {
+        wood ??= surfaces.map(
+          (name) => new MeshBVH(instrument.getObjectByName(name).children[0].geometry, { indirect: true }),
+        )
         const heights = []
         for (let i = 0; i < 4; i++) {
           lean(instrument, (i * Math.PI) / 2)
@@ -103,16 +103,16 @@ export function fittedPipa(rig, profile, instrument) {
         }
         // The pelvis and planted legs remain seated as the instrument rocks.
         // Keep its lower rim tangent to the same folds throughout the stroke.
-        mean = heights.reduce((sum, x) => sum + x, 0) / 4 + 0.00032
-        cosine = (heights[0] - heights[2]) / 2
-        sine = (heights[1] - heights[3]) / 2
+        fit.mean = heights.reduce((sum, x) => sum + x, 0) / 4 + 0.00032
+        fit.cosine = (heights[0] - heights[2]) / 2
+        fit.sine = (heights[1] - heights[3]) / 2
         cloth.geometry.dispose()
       } else {
-        mean = 0.061 * h
-        sine = cosine = 0
+        fit.mean = 0.061 * h
+        fit.sine = fit.cosine = 0
       }
     }
-    instrument.position.y = seat + 0.176 * h + mean + cosine * Math.cos(phase) + sine * Math.sin(phase)
+    instrument.position.y = seat + 0.176 * h + fit.mean + fit.cosine * Math.cos(phase) + fit.sine * Math.sin(phase)
     lean(instrument, phase)
   }
 }

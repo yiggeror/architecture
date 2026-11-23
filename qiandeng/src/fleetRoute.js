@@ -85,3 +85,15 @@ export function locate(boat, seconds, out, trail = 0) {
   out.dz = dz / norm
   return out
 }
+
+// Both the live fleet and the opening preview sample the same deck transform.
+export function placeVessel(spec, index, t, group, pose) {
+  const p = locate(spec, t, pose), rock = 0.65 + spec.beam * 0.14
+  group.position.set(p.x, 0.025 * Math.sin(t * 1.42 + index) + 0.012 * Math.sin(t * 2.07 + 0.35 * index), p.z)
+  group.rotation.set(
+    (0.0075 * Math.sin(t * 1.36 + index * 0.8)) / rock,
+    Math.atan2(p.dx, p.dz),
+    (0.012 * Math.sin(t * 1.67 + index * 0.95)) / rock,
+    'YXZ',
+  )
+}

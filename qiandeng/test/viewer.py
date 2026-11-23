@@ -185,6 +185,12 @@ class Viewer:
     def pose(self):
         return self.page.evaluate("viewerPose()")
 
+    def drawn_pose(self):
+        frame = self.page.evaluate("viewerFrames")
+        return self.page.wait_for_function(
+            "previous => viewerFrames > previous && viewerPose()", arg=frame
+        ).json_value()
+
     def button(self, name):
         button = self.page.get_by_role("button", name=name, exact=True)
         box = button.bounding_box()
@@ -440,7 +446,7 @@ class Viewer:
         self.touch("touchStart", (1, x, y - size * 0.32))
         self.page.wait_for_function("p=>Math.hypot(...viewerPose().eye.map((v,i)=>v-p[i]))>=4", arg=arrival["eye"])
         self.touch("touchEnd")
-        departure = self.pose()
+        departure = self.drawn_pose()
         arrival_travel = travel(arrival, departure)
         require(departure["eye"][1] > arrival["eye"][1] + 0.06, "the opening sightline did not climb")
         self.button("灯河")
@@ -456,7 +462,7 @@ class Viewer:
             "height => viewerPose().eye[1] >= height", arg=aim, timeout=110000
         )
         self.touch("touchEnd")
-        top = self.pose()
+        top = self.drawn_pose()
         climb = travel(initial, top)
         self.pitch(-1)
         overhead = self.pose()
@@ -471,14 +477,14 @@ class Viewer:
         self.touch("touchStart", (1, x, y - size * 0.12))
         self.page.wait_for_function("height => viewerPose().eye[1] < height - 2", arg=top["eye"][1])
         self.touch("touchEnd")
-        downward = travel(overhead, self.pose())
+        downward = travel(overhead, self.drawn_pose())
         self.pitch(1)
         before_reverse = self.pose()
         # Ease the physical stick back towards neutral as the rooflines draw
         # near. This also works on software-rendered frames over a second long.
         target = initial["eye"][1]
         for _ in range(14):
-            start_y = self.pose()["eye"][1]
+            start_y = self.drawn_pose()["eye"][1]
             error = target - start_y
             if abs(error) <= 0.5:
                 break
@@ -490,7 +496,7 @@ class Viewer:
                 arg=[start_y, sign, max(0.12, abs(error)*0.65)],
             )
             self.touch("touchEnd")
-        landing = self.pose()
+        landing = self.drawn_pose()
         descent = travel(before_reverse, landing, -1)
         require(
             math.dist(initial["eye"], landing["eye"]) < 1.05,
@@ -533,7 +539,7 @@ class Viewer:
             arg=before["gaze"],
             timeout=14000,
         )
-        turned = self.pose()
+        turned = self.drawn_pose()
         turn_angle = angle(before["gaze"], turned["gaze"])
         require(turn_angle > 20, f"two-finger turn {turn_angle:.1f} degrees")
         self.page.wait_for_function("y => viewerPose().eye[1] > y + 0.4", arg=turned["eye"][1])
@@ -553,7 +559,7 @@ class Viewer:
         self.touch("touchStart", left)
         self.touch("touchStart", left, right)
         self.touch("touchEnd", left)
-        stopped = self.pose()
+        stopped = self.drawn_pose()
         self.touch("touchMove", (2, 0.64 * w, 0.62 * h))
         self.touch("touchEnd")
         after_look = self.pose()
@@ -645,7 +651,7 @@ class Viewer:
         self.page.keyboard.down("w")
         self.page.wait_for_timeout(330)
         self.page.keyboard.up("w")
-        after = self.pose()
+        after = self.drawn_pose()
         length = travel(before, after)
         self.cdp.send("Emulation.setFocusEmulationEnabled", {"enabled": False})
         self.page.keyboard.down("w")

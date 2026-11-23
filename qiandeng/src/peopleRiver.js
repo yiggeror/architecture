@@ -4,6 +4,7 @@ import { collar, facePaint, soleShade, wovenBrocade } from './peopleDress.js'
 import { harbourCast, castRoute, figurePlacement } from './characterCast.js'
 import { characterProfile } from './characterProfiles.js'
 import { figurePool } from './figurePool.js'
+import { placeVessel } from './fleetRoute.js'
 
 const tau = Math.PI * 2
 // At the opposite quay the head, hair and robe are solid silhouettes. Vertex
@@ -66,7 +67,7 @@ function distantParasol() {
   g.computeVertexNormals()
   return g
 }
-export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
+export function riverPeople(scene, m, ships, shadeCharacter, groundAt, warmCharacter) {
   const cast = harbourCast(ships),
     mainCount = cast.length
   const residents = reachResidents(),
@@ -77,7 +78,7 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
     p.routeAt = (time, out) => castRoute(p, time, out)
     peopleById.set(p.appearance, p)
   }
-  const pool = figurePool(scene, shadeCharacter)
+  const pool = figurePool(scene, shadeCharacter, warmCharacter)
   const handLights = []
   const max = mainCount + residentLimit
   const matte = new T.MeshStandardMaterial({
@@ -182,6 +183,7 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
     oldHeight = 0,
     oldViewport = 0
   let last = -Infinity,
+    lastPoolRevision = 0,
     mode
   function write(id, c) {
     const mesh = batches[id + 'Far'] || batches[id],
@@ -245,10 +247,10 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
   const cabinInverse = new T.Matrix4(), sightRay = new T.Ray()
   const eyes = [new T.Vector3(), new T.Vector3()]
   const sampleWorld = new T.Vector3(), sampleLocal = new T.Vector3(), hit = new T.Vector3()
-  function passengerInSight(p) {
+  function passengerInSight(p, shipMatrix = p.ship?.group.matrixWorld) {
     const solids = coveredSolids.get(p.ship)
     if (!solids) return true
-    cabinInverse.copy(p.ship.group.matrixWorld).invert()
+    cabinInverse.copy(shipMatrix).invert()
     eyes[0].copy(viewpoint).applyMatrix4(cabinInverse)
     eyes[1].set(viewpoint.x, -viewpoint.y, viewpoint.z).applyMatrix4(cabinInverse)
     for (const sample of seatedSamples) {
@@ -376,6 +378,23 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
       part('limbLow', 0.03, shoulder - 0.23, 0.19, 0.142, 0.4, 0.07, 0xc59565)
     }
   }
+  function setSight(camera) {
+    viewpoint.copy(camera.position)
+    forward.set(0, 0, -1).applyQuaternion(camera.quaternion)
+    viewProjection.compose(viewpoint, camera.quaternion, unitScale).invert().premultiply(camera.projectionMatrix)
+    sight.setFromProjectionMatrix(viewProjection)
+  }
+  function projectedHeight(height, size, focal, distance) {
+    const depth = Math.abs(
+      (base.elements[12] - viewpoint.x) * forward.x +
+      (base.elements[13] + 0.77 * size - viewpoint.y) * forward.y +
+      (base.elements[14] - viewpoint.z) * forward.z,
+    )
+    return height * focal / Math.max(1, distance * 0.78, depth)
+  }
+  function nearInSight(p, distance, pixels, shipMatrix) {
+    return (distance < 5 || (pixels >= 67 && distance < 18)) && passengerInSight(p, shipMatrix)
+  }
   function people(t, day, camera) {
     const projection = camera?.projectionMatrix?.elements,
       screenHeight = camera?.userData?.viewportHeight ?? globalThis.innerHeight ?? 600
@@ -386,20 +405,15 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
         oldHeight !== projection[5] ||
         oldViewport !== screenHeight)
     const reframe = camera && (viewpoint.distanceToSquared(camera.position) > 0.24 ** 2 || lensChanged)
-    if (t >= last && t - last < 0.045 && mode === day && !reframe) return
-    if (camera) viewpoint.copy(camera.position)
+    if (t >= last && t - last < 0.045 && mode === day && !reframe && lastPoolRevision === pool.revision) return
+    lastPoolRevision = pool.revision
     if (projection) {
+      setSight(camera)
       oldAim.copy(camera.quaternion)
       oldWidth = projection[0]
       oldHeight = projection[5]
       oldViewport = screenHeight
-      forward.set(0, 0, -1).applyQuaternion(camera.quaternion)
-      viewProjection
-        .compose(viewpoint, camera.quaternion, unitScale)
-        .invert()
-        .premultiply(camera.projectionMatrix)
-      sight.setFromProjectionMatrix(viewProjection)
-    }
+    } else if (camera) viewpoint.copy(camera.position)
     last = t
     mode = day
     shine.emissiveIntensity = day ? 0.1 : 1.1
@@ -422,26 +436,23 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
       figurePlacement(p, at, base)
       const d2 = camera ? A.setFromMatrixPosition(base).distanceToSquared(camera.position) : 0
       if (!p.streetId && d2 > harbourReach ** 2) continue
+      const distance = Math.sqrt(d2)
+      const height = (seat ? 1.36 : 1.67) * s
+      const nearRange = Math.max(5, Math.min(18, height * focal / (67 * 0.78)))
+      // Allow two seconds of tailoring at quay speed before the near boundary.
+      const approaching = camera && distance < nearRange + 22
+      if (approaching) pool.want(p.profile, job, p, distance + 64)
       if (
         projection &&
         !visibleAboveWater(base.elements[12], base.elements[13] + 0.94 * s, base.elements[14], 1.69 * s)
       )
         continue
-      const distance = Math.sqrt(d2)
-      const depth = projection
-        ? Math.abs(
-            (base.elements[12] - viewpoint.x) * forward.x +
-              (base.elements[13] + 0.77 * s - viewpoint.y) * forward.y +
-              (base.elements[14] - viewpoint.z) * forward.z,
-          )
-        : distance
-      const pixels = ((seat ? 1.36 : 1.67) * s * focal) / Math.max(1, distance * 0.78, depth)
+      const pixels = projection ? projectedHeight(height, s, focal, distance) : Infinity
       const loading =
         job === 'porter' ? (0.5 + 0.5 * Math.sin(t * 0.9 + p.phase)) * (p.streetId ? p.current.pause : 1) : 0
       // A whole figure at this projected size has distinct hands and a readable face.
       // Always give a viewer within arm's reach the complete rig, on any screen.
-      if (camera && (distance < 5.0 || (pixels >= 67 && distance < 18)) && passengerInSight(p)) {
-        part('shadow', 0, 0.003, 0.02, 0.43, 1, 0.34, 0xffffff)
+      if (camera && nearInSight(p, distance, pixels)) {
         const figure = pool.draw(
           p.profile,
           job,
@@ -461,16 +472,20 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
             groundAt: p.ship ? undefined : groundAt,
           },
           base,
+          distance,
         )
-        if (figure.lamp) {
-          figure.lamp.userData.viewDistance = d2
-          handLights.push(figure.lamp)
+        if (figure) {
+          part('shadow', 0, 0.003, 0.02, 0.43, 1, 0.34, 0xffffff)
+          if (figure.lamp) {
+            figure.lamp.userData.viewDistance = d2
+            handLights.push(figure.lamp)
+          }
+          continue
         }
-      } else {
-        const q = p.profile
-        base.multiply(lowScale.makeScale(q.height * q.shoulders, q.height, q.height * q.girth))
-        distantPose(q, job, at.stride, t * 1.75 + p.phase, seat, pixels, loading)
-      }
+      } else if (approaching && passengerInSight(p)) pool.want(p.profile, job, p, distance + 32)
+      const q = p.profile
+      base.multiply(lowScale.makeScale(q.height * q.shoulders, q.height, q.height * q.girth))
+      distantPose(q, job, at.stride, t * 1.75 + p.phase, seat, pixels, loading)
     }
     pool.finish()
     handLights.sort((a, b) => a.userData.viewDistance - b.userData.viewDistance)
@@ -489,6 +504,44 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
     }
   }
   people.handLights = handLights
+  people.prepareSubject = (id, day) => {
+    const actor = peopleById.get(id)
+    if (!actor) return Promise.resolve()
+    return pool.prepare(actor.profile, day && actor.streetId ? actor.dayJob : actor.job, actor)
+  }
+  people.prepareOpening = (camera, day, start = 0) => {
+    setSight(camera)
+    last = -Infinity
+    const viewport = camera.userData.viewportHeight ?? globalThis.innerHeight ?? 600
+    const focal = 0.5 * viewport * camera.projectionMatrix.elements[5]
+    const deck = new Map(ships.map((ship) => [ship, new T.Matrix4()]))
+    const predicted = new T.Object3D(), pose = {}, matches = new Map()
+    // A hood can hide a seated passenger at t=0 and reveal them as the hull
+    // turns. Sample the actual deck motion and both the direct and reflected view.
+    for (let step = 0; step <= 8; step++) {
+      const t = start + 0.5 * step
+      for (const [i, ship] of ships.entries()) {
+        predicted.scale.copy(ship.group.scale)
+        placeVessel(ship.spec, i, t, predicted, pose)
+        predicted.updateMatrix()
+        const matrix = deck.get(ship).copy(predicted.matrix)
+        if (ship.group.parent) matrix.premultiply(ship.group.parent.matrixWorld)
+      }
+      for (const p of peopleById.values()) {
+        const ship = deck.get(p.ship)
+        figurePlacement(p, p.routeAt(t, route), base, ship)
+        const distance = A.setFromMatrixPosition(base).distanceTo(viewpoint)
+        if (distance >= 18 || !visibleAboveWater(base.elements[12], base.elements[13] + 0.94 * p.size,
+          base.elements[14], 1.69 * p.size)) continue
+        const job = day && p.streetId ? p.dayJob : p.job
+        const height = (['sit', 'row', 'lute'].includes(job) ? 1.36 : 1.67) * p.size
+        if (!nearInSight(p, distance, projectedHeight(height, p.size, focal, distance), ship)) continue
+        if (!matches.has(p)) matches.set(p, { p, job, step, distance })
+      }
+    }
+    const upcoming = [...matches.values()].sort((a, b) => a.step - b.step || a.distance - b.distance)
+    return Promise.all(upcoming.slice(0, 2).map(({ p, job }) => pool.prepare(p.profile, job, p)))
+  }
   people.subject = (id, t) => {
     const p = peopleById.get(id)
     if (!p) return null

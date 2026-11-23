@@ -1,5 +1,6 @@
 import * as T from 'three'
 import { layeredView, sceneSamples, sceneColor } from './layers.js'
+import { mirrorParallax } from './mirrorParallax.js'
 import { reflectionWindow } from './reflectionWindow.js'
 
 const vertex = `
@@ -14,6 +15,7 @@ edge=shore;
 #endif
 wp=(modelMatrix*vec4(position,1.)).xyz;reflection=textureMatrix*vec4(position,1.);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`
 const fragment = `
+${mirrorParallax}
 #ifdef ESTUARY
 varying float edge;
 #endif
@@ -39,7 +41,7 @@ void main(){
  vec2 q=reflection.xy/reflection.w;
  float viewAngle=max(.03,v.y);
  vec2 distortion=vec2(n.x+.12*n.z,.52*n.z)*mix(.052,.016,smoothstep(2.,100.,distance));
- vec2 k=clamp(q+distortion,.002,.998);
+ vec2 k=mirrorUV(clamp(q+distortion,.002,.998),wp);
  vec3 mirror=texture2D(tDiffuse,k).rgb*.54+
     texture2D(tDiffuse,clamp(k+vec2(.0015,.001),.001,.999)).rgb*.23+
     texture2D(tDiffuse,clamp(k-vec2(.0015,.001),.001,.999)).rgb*.23;
@@ -136,8 +138,10 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     magFilter: T.LinearFilter,
     generateMipmaps: false,
     samples: software ? 0 : sceneSamples(renderer),
-    resolveDepthBuffer: false,
+    depthTexture: primary ? new T.DepthTexture(width,height,T.UnsignedIntType) : null,
+    resolveDepthBuffer: primary,
   })
+  target.texture.userData.planar = true
   const window = reflectionWindow(target, level, primary)
   const matrix = new T.Matrix4(),
     camera = new T.PerspectiveCamera(),
@@ -152,6 +156,9 @@ export function river(scene, statics, renderer, common, software, config = {}) {
       tDiffuse: { value: target.texture },
       textureMatrix: { value: matrix },
       calm: { value: Number(small) },
+      mirrorDepth: primary ? common.mirrorDepth : common.blankDepth,
+      mirrorClip: common.mirrorClip,reflectedEye: common.reflectedEye,
+      moveMirror: primary ? common.moveMirror : {value:0},
       time: common.clockTime,
       day: common.day,
       movePlace: common.movePlace,
@@ -181,7 +188,7 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     opposite = new T.Vector4()
   const dummy = common.mirrorMap.value
   let stamp = -1e9,
-    force = true
+    force = true, wasStill = false, correcting = false
   function reflect(cam, now) {
     if (
       cam.position.y <= level + 0.015 ||
@@ -209,9 +216,25 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     const edge = 1 + 1 / (lens[0] * lens[0]) + 1 / (lens[5] * lens[5])
     const distance = Math.max(.015, Math.abs(cam.position.y - level))
     const imageTravel = (2 * lastEye.distanceTo(cam.position) / distance + lastQ.angleTo(cam.quaternion)) * focal * edge
-    const moved = force || !lastProjection.equals(cam.projectionMatrix) || imageTravel > .5
-    if (!moved && Math.abs(now - stamp) < (wide ? 700 : software ? 135 : 55)) return
-    if (moved) {
+    const changedLens = !lastProjection.equals(cam.projectionMatrix)
+    const moved = force || changedLens || imageTravel > 0.5
+    // At the onset of a small movement the previous projector still covers
+    // the water. Relight that static view, draw the current boat poses into it,
+    // and use its actual depth to correct parallax for this one frame.
+    const shortStep =
+      primary &&
+      (software || scene.userData.slowFrame) &&
+      wasStill &&
+      !correcting &&
+      moved &&
+      !force &&
+      !changedLens &&
+      Math.abs(now - stamp) < 390 &&
+      lastEye.distanceTo(cam.position) < Math.min(0.24, 0.065 * distance) &&
+      lastQ.angleTo(cam.quaternion) < 0.011
+    if (primary) common.moveMirror.value = Number(shortStep)
+    if (!moved && !correcting && Math.abs(now - stamp) < (wide ? 700 : software ? 135 : 55)) return
+    if ((moved && !shortStep) || correcting) {
       camera.position.copy(cam.position)
       camera.position.y = 2 * level - cam.position.y
       cam.getWorldDirection(look)
@@ -238,12 +261,7 @@ export function river(scene, statics, renderer, common, software, config = {}) {
       plane.copy(floor).applyMatrix4(camera.matrixWorldInverse)
       clip.set(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant)
       const e = camera.projectionMatrix.elements
-      opposite.set(
-        (Math.sign(clip.x) + e[8]) / e[0],
-        (Math.sign(clip.y) + e[9]) / e[5],
-        -1,
-        (1 + e[10]) / e[14]
-      )
+      opposite.set((Math.sign(clip.x) + e[8]) / e[0], (Math.sign(clip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14])
       clip.multiplyScalar(2 / clip.dot(opposite))
       e[2] = clip.x
       e[6] = clip.y
@@ -251,17 +269,28 @@ export function river(scene, statics, renderer, common, software, config = {}) {
       e[14] = clip.w
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert()
       window.clip(camera)
+      if (primary) common.mirrorClip.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     }
+    if (shortStep)
+      common.reflectedEye.value
+        .set(cam.position.x, 2 * level - cam.position.y, cam.position.z, 1)
+        .applyMatrix4(common.mirrorClip.value)
+    correcting = shortStep
+    wasStill = !moved || force
     stamp = now
     const previous = renderer.getRenderTarget()
     const original = common.mirrorMap.value,
-      wasValid = common.waterValid.value
+      wasValid = common.waterValid.value, originalDepth = common.mirrorDepth.value, correction = common.moveMirror.value
     const wet = scene.children.filter((o) => o.userData.waterSurface && o.visible)
     for (const o of wet) o.visible = false
     common.waterValid.value = 0
     common.mirrorMap.value = dummy
+    common.mirrorDepth.value = dummy
+    common.moveMirror.value = 0
     plate.render(target, camera, now, software ? 6200 : 750)
     for (const o of wet) o.visible = true
+    common.mirrorDepth.value = primary ? target.depthTexture : originalDepth
+    common.moveMirror.value = correction
     common.mirrorMap.value = primary ? target.texture : original
     common.waterValid.value = primary ? 1 : wasValid
     renderer.setRenderTarget(previous)
@@ -272,6 +301,8 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     reflect,
     invalidate() {
       force = true
+      wasStill = correcting = false
+      if(primary)common.moveMirror.value=0
       plate.invalidate()
     },
   }

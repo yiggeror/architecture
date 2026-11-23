@@ -31,6 +31,17 @@ export function characterCastShadow(renderer) {
     }
     return maps.get(surface)
   }
+  function prepare(entry) {
+    const previous = renderer.getRenderTarget()
+    try {
+      renderer.setRenderTarget(target)
+      for (const part of entry.parts) part.mesh.material = part.depth
+      return renderer.compileAsync(entry.group, lens, casters)
+    } finally {
+      for (const part of entry.parts) part.mesh.material = part.surface
+      renderer.setRenderTarget(previous)
+    }
+  }
   function render(entry, direction, source, t) {
     if (previousActor === entry && previousSource === source && t >= previousTime && t - previousTime < 1 / 28)
       return
@@ -63,5 +74,5 @@ export function characterCastShadow(renderer) {
       renderer.setClearColor(previousColor, previousAlpha)
     }
   }
-  return { casterMaterial, render, matrix, texture: target.depthTexture, texel: 1 / resolution }
+  return { casterMaterial, prepare, render, matrix, texture: target.depthTexture, texel: 1 / resolution }
 }

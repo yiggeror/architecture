@@ -66,11 +66,58 @@ function localShip(state, record, out) {
   o.updateMatrix()
   return out.copy(o.matrix).invert()
 }
-export function buildEquipment(profile, rig, job) {
+// These pieces have no dependency on the current pose or the ship's transform.
+export function buildEquipmentArt(profile, job) {
+  const m = finishes(profile, job), art = {}
+  if (['row', 'lute', 'sit'].includes(job)) art.seat = studySeat(m)
+  switch (job) {
+    case 'umbrella':
+      art.cover = parasol(m)
+      break
+    case 'lantern':
+    case 'watch':
+      art.handProp = lanternPiece(m, job === 'watch')
+      art.glow = m.glow
+      if (job === 'watch') art.baton = clapper(m)
+      break
+    case 'basket':
+      art.handProp = marketBasket(m)
+      break
+    case 'carrier':
+      art.pole = yoke(m)
+      art.baskets = [-1, 1].map((side) => loadBasket(m, side))
+      break
+    case 'porter':
+      art.crate = carryingCrate(m)
+      break
+    case 'row':
+      art.study = stageSweep(m)
+      break
+    case 'drum':
+      art.drum = studyDrum(m)
+      art.mallets = [mallet(m, 1), mallet(m, -1)]
+      break
+    case 'flute':
+      art.pipe = flute(m)
+      break
+    case 'lute':
+      art.lute = pipa(m, profile.design)
+      art.fit = {}
+      break
+    case 'sit':
+      art.book = booklet(m)
+      break
+    case 'walk':
+      if (profile.design === 'scholar') Object.assign(art, scholarFan(m))
+      else art.tag = travelTag(m)
+      break
+  }
+  return art
+}
+export function buildEquipment(profile, rig, job, art = buildEquipmentArt(profile, job)) {
   const group = new T.Group()
   group.name = '器用·' + job
-  const m = finishes(profile, job),
-    h = profile.height ?? 1,
+  const h = profile.height ?? 1,
     grips = {}
   const a = new T.Vector3(),
     v = new T.Vector3(),
@@ -125,7 +172,7 @@ export function buildEquipment(profile, rig, job) {
   let seat,
     lamp = null
   if (['row', 'lute', 'sit'].includes(job)) {
-    seat = owner(studySeat(m))
+    seat = owner(art.seat)
     updates.push((state) => {
       const record = state.actor
       seat.visible = !record?.ship
@@ -135,7 +182,7 @@ export function buildEquipment(profile, rig, job) {
     })
   }
   if (job === 'umbrella') {
-    const cover = owner(parasol(m)),
+    const cover = owner(art.cover),
       l = held('l', 'grip', 0.0118)
     updates.push((state, ph) => {
       cover.position.copy(shoulder(state, 'l', 0)).add(a.set(0.048, -0.247, 0.189).multiplyScalar(h))
@@ -155,9 +202,9 @@ export function buildEquipment(profile, rig, job) {
     })
   } else if (job === 'lantern' || job === 'watch' || job === 'basket') {
     const light = job !== 'basket',
-      handProp = owner(light ? lanternPiece(m, job === 'watch') : marketBasket(m)),
+      handProp = owner(art.handProp),
       r = held('r', 'grip', 0.0105)
-    const baton = job === 'watch' ? owner(clapper(m)) : null,
+    const baton = job === 'watch' ? owner(art.baton) : null,
       l = baton ? held('l', 'grip', 0.01) : null
     if (light) {
       lamp = new T.PointLight(0xffb56d, 0.64, 2.65, 2)
@@ -181,19 +228,18 @@ export function buildEquipment(profile, rig, job) {
         bind(l, baton, origin)
       }
       if (light) {
-        m.glow.emissiveIntensity = state.day ? 0.1 : 0.54
+        art.glow.emissiveIntensity = state.day ? 0.1 : 0.54
         lamp.intensity = state.day ? 0.03 : 0.64
       }
     })
   } else if (job === 'carrier') {
-    const pole = owner(yoke(m)),
-      baskets = [-1, 1].map((s) => {
-        const b = loadBasket(m, s)
-        pole.add(b)
-        b.position.set(0, -0.089, s * 0.573)
-        return b
-      }),
+    const pole = owner(art.pole),
+      baskets = art.baskets,
       r = held('r', 'grip', 0.018)
+    for (const [i, basket] of baskets.entries()) {
+      pole.add(basket)
+      basket.position.set(0, -0.089, i ? 0.573 : -0.573)
+    }
     updates.push((state, ph) => {
       pole.position.copy(shoulder(state, 'r', 0.025 * h))
       pole.position.x += 0.028 * h
@@ -207,7 +253,7 @@ export function buildEquipment(profile, rig, job) {
       bind(r, pole, a.set(0, -0.022, 0.217), front, up)
     })
   } else if (job === 'porter') {
-    const crate = owner(carryingCrate(m)),
+    const crate = owner(art.crate),
       l = held('l', 'grip', 0.01),
       r = held('r', 'grip', 0.01)
     updates.push((state, ph) => {
@@ -233,7 +279,7 @@ export function buildEquipment(profile, rig, job) {
       bind(r, crate, a.set(-0.207, 0, 0), axis, up)
     })
   } else if (job === 'row') {
-    const study = stageSweep(m)
+    const study = art.study
     owner(study.group)
     const l = held('l', 'grip', 0.018),
       r = held('r', 'grip', 0.018)
@@ -271,8 +317,8 @@ export function buildEquipment(profile, rig, job) {
       }
     })
   } else if (job === 'drum') {
-    const drum = owner(studyDrum(m)),
-      mallets = [owner(mallet(m, 1)), owner(mallet(m, -1))]
+    const drum = owner(art.drum),
+      mallets = art.mallets.map(owner)
     const handles = [held('l', 'grip', 0.011), held('r', 'grip', 0.011)]
     grips.strikes = [new T.Vector3(), new T.Vector3()]
     updates.push((state, ph) => {
@@ -306,7 +352,7 @@ export function buildEquipment(profile, rig, job) {
       }
     })
   } else if (job === 'flute') {
-    const pipe = owner(flute(m)),
+    const pipe = owner(art.pipe),
       l = held('l', 'flute', 0.0105),
       r = held('r', 'flute', 0.0105),
       lip = portraitMouth(profile).multiplyScalar(h)
@@ -323,8 +369,8 @@ export function buildEquipment(profile, rig, job) {
       bind(r, pipe, a.set(0, 0.235, 0), up, front)
     })
   } else if (job === 'lute') {
-    const lute = owner(pipa(m, profile.design)),
-      seatInstrument = fittedPipa(rig, profile, lute),
+    const lute = owner(art.lute),
+      seatInstrument = fittedPipa(rig, profile, lute, art.fit),
       l = held('l', 'strings', 0.0205),
       r = held('r', 'pluck', 0),
       pluckingAxis = new T.Vector3(-0.862693, 0.158454, 0.480264),
@@ -386,7 +432,7 @@ export function buildEquipment(profile, rig, job) {
       grips.pluckPoint.applyMatrix4(transform)
     })
   } else if (job === 'sit') {
-    const book = owner(booklet(m)),
+    const book = owner(art.book),
       l = held('l', 'grip', 0.009),
       r = held('r', 'grip', 0.009)
     updates.push((state, ph) => {
@@ -396,7 +442,7 @@ export function buildEquipment(profile, rig, job) {
       bind(r, book, a.set(-0.112, 0.007, -0.014))
     })
   } else if (job === 'walk' && profile.design === 'scholar') {
-    const { fan, tassel } = scholarFan(m),
+    const { fan, tassel } = art,
       r = held('r', 'fan', fanGripRadius)
     owner(fan)
     updates.push((state) => {
@@ -425,7 +471,7 @@ export function buildEquipment(profile, rig, job) {
       bind(r, fan, fanGrip)
     })
   } else if (job === 'walk') {
-    const tag = owner(travelTag(m))
+    const tag = owner(art.tag)
     updates.push((state, ph) => {
       tag.position.copy(
         poseLandmark(rig, profile, state, 'pelvis', a.set(0.146 * h, 0.021 * h, -0.035 * h), point),

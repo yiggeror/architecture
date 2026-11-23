@@ -80,62 +80,185 @@ export function layeredView(renderer, city, stone, software = false) {
   const lastViewport = new T.Vector4(), lastScissor = new T.Vector4()
   const origin = new T.Vector2()
   let plate, cached = false, first = true, lastTime = -Infinity, lastScissorTest = false
+  const draft = software
+    ? new T.WebGLRenderTarget(1, 1, {
+        ...sceneColor(renderer),
+        minFilter: T.NearestFilter,
+        magFilter: T.NearestFilter,
+        depthTexture: new T.DepthTexture(1, 1, T.UnsignedIntType),
+      })
+    : null
+  let draftSheet,
+    draftReady = false
+  let previewReady = false,
+    nextTile = 0,
+    stillSince = -Infinity
+  const tileView = new T.Frustum(),
+    crop = new T.Matrix4(),
+    viewProjection = new T.Matrix4()
+
+  function preview(target, camera, same) {
+    const paint = stone.userData.visibleLight
+    if (paint) paint(city, target, camera, same && previewReady)
+    else {
+      renderer.setRenderTarget(target)
+      renderer.render(city, camera)
+    }
+    previewReady = true
+  }
+
+  function tile(camera, width, height, tileSize) {
+    const columns = Math.ceil(width / tileSize),
+      rows = Math.ceil(height / tileSize)
+    const x = (nextTile % columns) * tileSize,
+      y = Math.floor(nextTile / columns) * tileSize
+    const w = Math.min(tileSize, width - x),
+      h = Math.min(tileSize, height - y)
+    buffer.scissor.set(x, y, w, h)
+    buffer.scissorTest = w !== width || h !== height
+    const v = buffer.viewport
+    crop.set(
+      v.z / w,
+      0,
+      0,
+      (2 * v.x + v.z - 2 * x - w) / w,
+      0,
+      v.w / h,
+      0,
+      (2 * v.y + v.w - 2 * y - h) / h,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+    )
+    viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).premultiply(crop)
+    const prior = camera.userData.reflectionFrustum
+    camera.userData.reflectionFrustum = tileView.setFromProjectionMatrix(viewProjection)
+    try {
+      renderer.setRenderTarget(buffer)
+      renderer.render(stone, camera)
+    } finally {
+      camera.userData.reflectionFrustum = prior
+    }
+    return ++nextTile === columns * rows
+  }
 
   function render(target, camera, stamp, refreshMs) {
-    const moving = first || !last.equals(camera.matrixWorld) || !lastProjection.equals(camera.projectionMatrix) ||
-      !lastViewport.equals(target.viewport) || !lastScissor.equals(target.scissor) || lastScissorTest !== target.scissorTest
-    // While flying write stone, sky, water and figures into one multisampled
-    // framebuffer. The single resolve keeps geometry coverage and depth intact.
+    if (stone.userData.preparingFlight) {
+      preview(target, camera, false)
+      return false
+    }
+    const initial = first
+    const moving =
+      initial ||
+      !last.equals(camera.matrixWorld) ||
+      !lastProjection.equals(camera.projectionMatrix) ||
+      !lastViewport.equals(target.viewport) ||
+      !lastScissor.equals(target.scissor) ||
+      lastScissorTest !== target.scissorTest
     const scale = target.samples ? 2 : 1
-    const v = target.viewport, r = target.scissorTest ? target.scissor : v
-    const x = Math.max(0, r.x, v.x), y = Math.max(0, r.y, v.y)
+    const v = target.viewport,
+      r = target.scissorTest ? target.scissor : v
+    const x = Math.max(0, r.x, v.x),
+      y = Math.max(0, r.y, v.y)
     const w = scale * (Math.min(target.width, v.x + v.z, r.x + r.z) - x)
     const h = scale * (Math.min(target.height, v.y + v.w, r.y + r.w) - y)
     if (w <= 0 || h <= 0) return
-    // Cropped mirrors cache only their visible rectangle. A very large display
-    // also keeps the native four geometry samples without a second full city plate.
     const bytes = (buffer.texture.format === T.RGBFormat ? 8 : 12) * (1 + buffer.samples)
-    const budget = target.depthTexture ? 64 * 1024 * 1024 : 12 * 1024 * 1024
+    const budget = !target.texture.userData.planar ? 64 * 1024 * 1024 : 12 * 1024 * 1024
     const canCache = w * h * bytes <= budget && Math.max(w, h) <= renderer.capabilities.maxTextureSize
     if (!canCache && buffer.width > 1) buffer.setSize(1, 1)
-    const live = moving && !(software && first)
     if (moving) {
       first = false
       cached = false
+      previewReady = false
+      draftReady = false
+      nextTile = 0
+      stillSince = performance.now()
       last.copy(camera.matrixWorld)
       lastProjection.copy(camera.projectionMatrix)
-      lastViewport.copy(target.viewport)
+      lastViewport.copy(v)
       lastScissor.copy(target.scissor)
       lastScissorTest = target.scissorTest
     }
-    if (live || !canCache) {
-      renderer.setRenderTarget(target)
-      renderer.render(city, camera)
+    // While a visitor is steering, use the current geometry. During a brief
+    // pause its surface buffers can instantly relight that same view. Preparing
+    // four-sample stonework in one submission would block the next touch.
+    if (!canCache || (moving && !(software && initial))) {
+      preview(target, camera, !moving)
       return false
     }
-    if (!cached || buffer.width !== w || buffer.height !== h || Math.abs(stamp - lastTime) > refreshMs) {
+    const sizeChanged = buffer.width !== w || buffer.height !== h
+    if (sizeChanged) {
+      cached = false
+      nextTile = 0
       buffer.setSize(w, h)
-      buffer.viewport.copy(target.viewport).multiplyScalar(scale)
-      buffer.viewport.x -= x * scale
-      buffer.viewport.y -= y * scale
+    }
+    buffer.viewport.copy(v).multiplyScalar(scale)
+    buffer.viewport.x -= x * scale
+    buffer.viewport.y -= y * scale
+    origin.set(x, y)
+    const expired = Math.abs(stamp - lastTime) > refreshMs
+    const quota = stone.userData.refinement
+    const turn = !quota || (!quota.used && quota.main === !target.texture.userData.planar)
+    if (initial && software) {
       buffer.scissorTest = false
-      origin.set(x, y)
       renderer.setRenderTarget(buffer)
       renderer.render(stone, camera)
-      lastTime = stamp
       cached = true
+      lastTime = stamp
+    } else if ((!cached || expired || nextTile) && turn && performance.now() - stillSince > 280) {
+      if (quota) quota.used = true
+      if (tile(camera, w, h, software ? 112 : 288)) {
+        cached = true
+        lastTime = stamp
+        nextTile = 0
+      }
     }
-    plate ??= restorePlate(renderer, buffer, target.samples, origin)
-    city.add(plate)
+    let active
+    if (cached) {
+      plate ??= restorePlate(renderer, buffer, target.samples, origin)
+      active = plate
+    } else if (draft && target.samples === 0 && previewReady && stone.userData.visibleLight) {
+      // Resolve the last moving view once. While the four-sample plate fills,
+      // boats and weather continue in front of the full-resolution preview.
+      if (!draftReady) {
+        draft.setSize(target.width, target.height)
+        draft.viewport.copy(target.viewport)
+        draft.scissor.copy(target.scissor)
+        draft.scissorTest = target.scissorTest
+        stone.userData.visibleLight(stone, draft, camera, true, target)
+        draftReady = true
+      }
+      draftSheet ??= restorePlate(renderer, draft, 0, new T.Vector2())
+      active = draftSheet
+    } else {
+      preview(target, camera, !moving)
+      return false
+    }
+    city.add(active)
     stone.visible = false
-    renderer.setRenderTarget(target)
-    renderer.render(city, camera)
-    stone.visible = true
-    city.remove(plate)
-    return true
+    try {
+      renderer.setRenderTarget(target)
+      renderer.render(city, camera)
+    } finally {
+      stone.visible = true
+      city.remove(active)
+    }
+    return cached
   }
   return {
     render,
-    invalidate() { cached = false },
+    invalidate() {
+      cached = false
+      previewReady = false
+      draftReady = false
+      nextTile = 0
+      lastTime = -Infinity
+    },
   }
 }

@@ -13,7 +13,7 @@ function breadth(boat, u) {
 function top(boat, u) {
   return boat.deck + 0.105 + Math.abs(u) ** 3.4 * (0.4 + 0.16 * u)
 }
-function hull(b, m, boat, boxes) {
+function hull(b, m, boat, boxes, opaquePanels) {
   const n = 26,
     deep = boat.kind === 'carp' ? 0.57 : 0.39
   function p(u, j, sg) {
@@ -42,7 +42,9 @@ function hull(b, m, boat, boxes) {
       boat.deck + 0.12 * Math.abs(u) ** 4,
       (u * boat.length) / 2,
     ]
-    b.face(m.wood, [deck(a, -1), deck(c, -1), deck(c, 1), deck(a, 1)], 0.8 + (0.15 * ((i * 7) % 4)) / 3)
+    const planks = [deck(a, -1), deck(c, -1), deck(c, 1), deck(a, 1)]
+    b.face(m.wood, planks, 0.8 + (0.15 * ((i * 7) % 4)) / 3)
+    opaquePanels.push(...planks.flat())
     b.beam(m.darkwood, deck(a, -1), deck(a, 1), 0.015, 0.019, 0.86)
     if (i % 2 === 0) {
       const edge = ((i + 2) * 2) / n - 1,
@@ -89,12 +91,18 @@ function basket(b, m, x, y, z, r) {
       12,
     )
 }
-function canopy(b, m, z, len, w, eave, body) {
+function canopy(b, m, z, len, w, eave, body, opaquePanels) {
   const hw = w * 0.5
   function p(t, d) {
     return [hw * Math.cos(t), eave + hw * 0.82 * Math.sin(t), z + d]
   }
   const strips = 11
+  // Each straight strip is opaque along its entire length including the seven
+  // painted sections. Record its real outline for passengers under the arch.
+  for (let i = 0; i < strips; i++) {
+    const a = i * Math.PI / strips, c = (i + 1) * Math.PI / strips
+    opaquePanels.push(...p(a, -len / 2), ...p(c, -len / 2), ...p(c, len / 2), ...p(a, len / 2))
+  }
   for (let i = 0; i < strips; i++)
     for (let j = 0; j < 7; j++) {
       const a = (i * Math.PI) / strips,
@@ -311,7 +319,8 @@ export function buildVessel(scene, m, boat, silk, panels) {
     boxes = [],
     deckLanterns = []
   group.name = boat.name
-  hull(b, m, boat, boxes)
+  const opaquePanels = []
+  hull(b, m, boat, boxes, opaquePanels)
   const d = boat.deck,
     passenger = boat.kind === 'pavilion',
     music = boat.kind === 'music'
@@ -324,7 +333,7 @@ export function buildVessel(scene, m, boat, silk, panels) {
     const eave = d + 0.82,
       len = boat.length * 0.47,
       w = boat.beam * 0.8
-    canopy(b, m, 0.13, len, w, eave, boat.beam < 1.9 ? m.ink : m.reed)
+    canopy(b, m, 0.13, len, w, eave, boat.beam < 1.9 ? m.ink : m.reed, opaquePanels)
     for (let i = -2; i <= 2; i++) {
       const v = i * 0.19 * w * 0.95,
         y = eave + 0.5 * w * 0.82 * Math.sqrt(Math.max(0, 1 - (v / (w * 0.5)) ** 2))
@@ -341,7 +350,7 @@ export function buildVessel(scene, m, boat, silk, panels) {
         if ((j === 1 && side === 1) || j === 0) crate(b, m, side * 0.39, d + 0.47, z, 0.56, 0.31, 0.6)
       }
     for (const z of [1.72, -1.98]) basket(b, m, 0.04, d + 0.04, z, 0.37)
-    canopy(b, m, 2.42, 1.25, 1.35, d + 0.88, m.reed)
+    canopy(b, m, 2.42, 1.25, 1.35, d + 0.88, m.reed, opaquePanels)
     boxes.push([-0.83, d - 0.01, -1.36, 0.82, d + 0.81, 1.35])
   } else {
     for (const side of [-1, 1])
@@ -375,7 +384,11 @@ export function buildVessel(scene, m, boat, silk, panels) {
   }
   b.finish()
   scene.add(group)
-  return { group, boxes, oars, deckLanterns }
+  const deckSight = {
+    vertices: new Float32Array(opaquePanels),
+    faces: Uint16Array.from({ length: opaquePanels.length / 3 }, (_, i) => i),
+  }
+  return { group, boxes, oars, deckLanterns, deckSight }
 }
 
 // The thinner turned section is where both hands close. The broad blade

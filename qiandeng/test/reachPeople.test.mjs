@@ -134,7 +134,7 @@ test('a stationary turn refreshes the crowd, while an overhead look retains the 
   }
 })
 
-test('the opening fits the passenger budget and the smallest lamps still walk along the quay', () => {
+test('the opening prepares the approaching ferry, fits its crowd budget and retains walking lamps', async () => {
   const scene = new T.Scene(),
     camera = new T.PerspectiveCamera(),
     station = stations[0]
@@ -155,7 +155,12 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
     group.updateMatrixWorld()
     return { spec, ...vessel }
   })
-  const people = riverPeople(scene, {}, ships)
+  const warmed = []
+  const people = riverPeople(scene, {}, ships, undefined, undefined, async (group) => {
+    assert.equal(group.visible, false)
+    await Promise.resolve()
+    warmed.push(group.userData.personId)
+  })
   const triangles = () => {
     let total = 0
     scene.traverseVisible(mesh => {
@@ -173,6 +178,10 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
     camera.lookAt(...(portrait ? station.portraitTarget : station.target))
     updateLens(camera, width, height)
     camera.userData.viewportHeight = height
+    const opening = await people.prepareOpening(camera, false)
+    assert.deepEqual(opening.map((group) => group.userData.personId).sort(), [20, 21])
+    assert.deepEqual([...warmed].sort(), [20, 21])
+    assert.ok(opening.every((group) => !group.visible))
     people(0, false, camera)
     assert.ok(triangles() <= 17000, width + ' × ' + height + ' opening')
     assert.ok(batch('headLow').count > 0 && batch('lightFar').count > 0)

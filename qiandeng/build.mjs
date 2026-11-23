@@ -1,7 +1,7 @@
 import { build } from 'esbuild'
 import { readFile, writeFile } from 'node:fs/promises'
 
-async function bundle(entry) {
+async function bundle(entry, definitions = {}) {
   const result = await build({
     entryPoints: [entry],
     format: 'iife',
@@ -10,12 +10,12 @@ async function bundle(entry) {
     write: false,
     legalComments: 'inline',
     target: ['es2020'],
-    define: { __CITY_REVIEW__: 'false' },
+    define: { __CITY_REVIEW__: 'false', ...definitions },
   })
   return result.outputFiles[0].text.replace(/[\t ]+$/gm, '').replace(/<\/script/gi, '<\\/script')
 }
 const [city, studio, arrival, cityShell, studioShell, ...licenses] = await Promise.all([
-  bundle('src/main.js'),
+  bundle('src/figureWorker.js').then(worker => bundle('src/main.js', { __FIGURE_WORKER_SOURCE__: JSON.stringify(worker) })),
   bundle('src/characterStudio.js'),
   bundle('src/arrival.js'),
   readFile('shell.html', 'utf8'),

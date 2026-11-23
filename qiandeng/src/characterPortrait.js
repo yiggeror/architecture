@@ -777,7 +777,7 @@ export function portraitMouth(profile) {
   // The flute rests against the vermilion, just in front of the closed seam.
   return new T.Vector3(0, y, Math.max(a.front(0, y + 0.0011), a.front(0, y - 0.0015)))
 }
-export function buildPortrait(profile) {
+export function buildPortraitArt(profile) {
   const a = faceAnatomy(profile),
     skin = new PortraitMesh(),
     eyes = new PortraitMesh(),
@@ -821,7 +821,6 @@ export function buildPortrait(profile) {
   const eyelids = lids.mesh(flesh, '上下眼睑'),
     gaze = irises(a, cornea),
     coat = irises(a, tearFilm, true)
-  coat.morphTargetInfluences = gaze.morphTargetInfluences
   const face = skin.mesh(flesh, '面骨、五官与耳廓')
   if (face.morphTargetInfluences) {
     const expression = a.family === 'drummer' ? '呼气' : '含笑'
@@ -832,12 +831,17 @@ export function buildPortrait(profile) {
   }
   group.add(face, eyes.mesh(cornea, '巩膜与内眦泪阜'), eyelids, gaze, coat)
   dressHair(group, a)
+  return { group, face, eyelids, gaze, coat, drummer: a.family === 'drummer' }
+}
+export function buildPortrait(profile, art = buildPortraitArt(profile)) {
+  const { group, face, eyelids, gaze, coat, drummer } = art
+  coat.morphTargetInfluences = gaze.morphTargetInfluences
   const period = 3.65 + (profile.seed % 207) * 0.0094,
     offset = ((profile.seed >>> 9) % 997) * 0.002
   group.userData.animate = (t, phase = 0, state) => {
     const acting = portraitPerformance(profile, state ?? {}, t, phase)
     if (face.morphTargetInfluences) {
-      face.morphTargetInfluences[0] = (a.family === 'drummer' ? acting?.exhale : acting?.smile) ?? 0
+      face.morphTargetInfluences[0] = (drummer ? acting?.exhale : acting?.smile) ?? 0
       face.morphTargetInfluences[1] = eyelids.morphTargetInfluences[1] = acting?.brow ?? 0
     }
     if (acting) {

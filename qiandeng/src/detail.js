@@ -306,5 +306,12 @@ export function scenicDetail(statics) {
     }
   }
   const observe = scenicVisibility(statics)
-  return { update }
+  return {
+    update,
+    settle() {
+      lastEye.set(Infinity, 0, 0)
+      movedAt = -Infinity
+      preparedScale = undefined
+    },
+  }
 }

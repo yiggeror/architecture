@@ -1,11 +1,12 @@
 import * as T from 'three'
 import { instanceVisibility } from './instanceVisibility.js'
+import { figureSight } from './figureSight.js'
 
 // A cell holds the farthest depth of a real opaque face that covers the entire
 // cell. An object is hidden only if its nearest box corner is behind every
 // cell it touches. Windows, branches, door openings and silhouettes stay open.
 function depthTiles() {
-  const columns = 64, rows = 48
+  const columns = 112, rows = 80
   const depth = new Float32Array(columns * rows)
   const px = new Float64Array(4), py = new Float64Array(4)
   const dx = new Float64Array(4), dy = new Float64Array(4), inset = new Float64Array(4)
@@ -80,13 +81,12 @@ function depthTiles() {
     }
     return true
   }
-  return { clear, paint, hides }
+  return { clear, paint, hides, transform(view) { matrix = view.elements } }
 }
 
 // Keep runs of the authored index in their original order. Only the index of
 // a partly visible mesh is streamed; its UVs, normals and vertex buffers are shared.
-const runSize = 72 * 3
-function sections(g, opaque) {
+function sections(g, opaque, runSize = 18 * 3) {
   const index = g.index.array, pos = g.attributes.position.array
   const boxes = [], faces = []
   const point = new T.Vector3()
@@ -105,12 +105,12 @@ function sections(g, opaque) {
       u.fromArray(pos, ib * 3).sub(a); v.fromArray(pos, ic * 3).sub(a)
       const area = u.cross(v).lengthSq()
       const quad = i + 5 < index.length && index[i + 3] === ia && index[i + 4] === ic
-      if (area > 144) faces.push({ area, a: ia, b: ib, c: ic, d: quad ? index[i + 5] : -1 })
+      if (area > 32) faces.push({ area, a: ia, b: ib, c: ic, d: quad ? index[i + 5] : -1 })
       if (quad) i += 3
     }
     faces.sort((a, b) => b.area - a.area)
   }
-  const occluders = new Int32Array(Math.min(96, faces.length) * 4)
+  const occluders = new Int32Array(Math.min(192, faces.length) * 4)
   for (let i = 0; i * 4 < occluders.length; i++) {
     const f = faces[i]
     occluders.set([f.a, f.b, f.c, f.d], i * 4)
@@ -161,6 +161,9 @@ export function scenicVisibility(statics) {
   const identity = new T.Matrix4(), view = new T.Matrix4(), frustum = new T.Frustum()
   const tiles = depthTiles(), candidates = [], changed = []
   const instances = instanceVisibility(statics.parent)
+  const figures = figureSight(depthTiles(), sections)
+  statics.userData.trackFigure = figures.track
+  let frame = 0
   statics.traverse(o => {
     const m = o.material
     if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && m?.isMeshStandardMaterial &&
@@ -201,6 +204,7 @@ export function scenicVisibility(statics) {
     if (!camera.isPerspectiveCamera || statics.overrideMaterial) return
     view.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     const sight = camera.userData.reflectionFrustum || frustum.setFromProjectionMatrix(view)
+    if (city) figures.prepare(camera, sight, frame)
     if (!statics.visible) {
       if (city) instances.prepare(camera, sight, null)
       return
@@ -209,7 +213,7 @@ export function scenicVisibility(statics) {
     if (depth === tiles) tiles.clear(view)
     statics.traverseVisible(o => {
       if (o.isLOD && o.autoUpdate) o.update(camera)
-      if (!supported.has(o) || !o.layers.test(camera.layers)) return
+      if (!supported.has(o) || !o.material.visible || !o.layers.test(camera.layers)) return
       const g = o.geometry
       if (!g.index?.count || !g.attributes.position || g.groups.length ||
           g.drawRange.start || g.drawRange.count < g.index.count) return
@@ -241,6 +245,7 @@ export function scenicVisibility(statics) {
     }
     changed.length = 0
     instances.restore()
+    figures.restore()
   }
   for (const scene of [statics, statics.parent]) {
     if (!scene?.isScene) continue
@@ -255,6 +260,7 @@ export function scenicVisibility(statics) {
     }
   }
   return function observe(camera) {
+    frame++
     observer = camera
     fresh = false
     camera.userData.hiddenReceiver = hiddenReceiver

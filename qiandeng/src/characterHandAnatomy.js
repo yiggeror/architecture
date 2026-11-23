@@ -1,6 +1,6 @@
 import * as T from 'three'
 import { knuckles, fingerWidths } from './characterHandWrist.js'
-import { drumPressure } from './characterHandPressure.js'
+import { drumPressure, drumHandMotion } from './characterHandPressure.js'
 import {
   inFrettingSpace,
   seatFrettingHand,
@@ -951,8 +951,7 @@ export function sculptHand(profile, side, job, joined = false) {
   mesh.userData.digitJoints = targets
   mesh.userData.distalSkin = [...fingers, thumbShape].map((finger) => finger.distalSkin)
   mesh.userData.gripRadius = radius
-  if (profile.id === 4 && job === 'drum')
-    return drumPressure(mesh, side, profile, radius, wrist, [...fingers, thumbShape])
+  if (profile.id === 4 && job === 'drum') drumPressure(mesh, radius, [...fingers, thumbShape])
   if (!moving?.length) return { mesh, wrist }
   const geometry = mesh.geometry,
     initial = geometry.attributes.position.array,
@@ -1040,7 +1039,6 @@ export function sculptHand(profile, side, job, joined = false) {
   }
   mesh.updateMorphTargets()
   if (kind === 'pluck') {
-    const period = posePeriod(profile, { job: 'lute' })
     const vertex = geometry.attributes.position,
       normal = new T.Vector3(...boardNormal),
       sample = new T.Vector3()
@@ -1057,44 +1055,55 @@ export function sculptHand(profile, side, job, joined = false) {
           lowest = height
         }
       }
-      return { index: support, point: new T.Vector3().fromBufferAttribute(vertex, support) }
+      return support
     })
-    mesh.userData.pickingPads = { index: pads[0].index, thumb: pads[1].index }
+    mesh.userData.pickingPads = { index: pads[0], thumb: pads[1] }
+  }
+  mesh.userData.movingDigits = active.map((finger) => finger.digit)
+  if (reSeat) seatFrettingHand(mesh)
+  return { mesh, wrist }
+}
+
+// Bind the motion to the finished morph buffers, including hands made in a worker.
+export function handMotion(mesh, profile, side, job) {
+  if (profile.id === 4 && job === 'drum') return { update: drumHandMotion(mesh, side, profile) }
+  const { movingDigits, pickingPads, gesture } = mesh.userData
+  if (!movingDigits) return {}
+  if (pickingPads) {
+    const period = posePeriod(profile, { job: 'lute' })
+    const vertex = mesh.geometry.attributes.position
+    const index = new T.Vector3().fromBufferAttribute(vertex, pickingPads.index),
+      thumb = new T.Vector3().fromBufferAttribute(vertex, pickingPads.thumb)
     return {
-      mesh,
-      wrist,
       pickingContact(phase, out) {
-        return out.copy(pads[0].point).lerp(pads[1].point, thumbStroke(phase))
+        return out.copy(index).lerp(thumb, thumbStroke(phase))
       },
       update(state) {
         const phase = ((state.t ?? 0) * tau) / period + (state.phase ?? 0)
         const turn = thumbStroke(phase)
-        for (const [i, f] of active.entries()) {
-          mesh.morphTargetInfluences[i] = f.digit === 4 ? 1 - turn : f.digit === 0 ? turn : 0.25 + 0.35 * turn
+        for (const [i, digit] of movingDigits.entries()) {
+          mesh.morphTargetInfluences[i] = digit === 4 ? 1 - turn : digit === 0 ? turn : 0.25 + 0.35 * turn
         }
       },
     }
   }
-  if (welcoming)
+  if (gesture === 'relaxed')
     return {
-      mesh,
-      wrist,
       update(state) {
         const gesture = portraitPerformance(profile, state)?.gesture ?? 0
-        for (let i = 0; i < active.length; i++) {
+        for (let i = 0; i < movingDigits.length; i++) {
           mesh.morphTargetInfluences[i] = smooth(clamp(gesture * 1.14 - 0.045 * i))
         }
       },
     }
-  const fretPeriod = kind === 'strings' ? posePeriod(profile, { job: 'lute' }) : null
+  const fretPeriod = gesture === 'strings' ? posePeriod(profile, { job: 'lute' }) : null
   function update(state) {
     const time = state.t ?? 0
     const beat = fretPeriod
       ? 2 * ((tau * time) / fretPeriod + (state.phase ?? 0))
       : time * 3.7 + (state.phase ?? 0)
-    for (let i = 0; i < active.length; i++)
-      mesh.morphTargetInfluences[i] = (0.5 - 0.5 * Math.cos(beat + active[i].digit * 1.84)) ** 2
+    for (let i = 0; i < movingDigits.length; i++)
+      mesh.morphTargetInfluences[i] = (0.5 - 0.5 * Math.cos(beat + movingDigits[i] * 1.84)) ** 2
   }
-  if (reSeat) seatFrettingHand(mesh)
-  return { mesh, wrist, update }
+  return { update }
 }

@@ -1,5 +1,6 @@
 import { generator } from './mesh.js'
 import { raisedFret } from './gateCraft.js'
+import { dressMasonry, portalUV, vaultUV } from './gateStoneLight.js'
 
 export const DECK = 10.36
 export const Z_HALF = 4.35
@@ -50,14 +51,15 @@ function bolster(b, m, a) {
       const v = 0.75 + 0.25 * random()
       // A slight rebate gives the radial mortar shadow a visible edge at water level.
       b.face(
-        m.stone,
+        m.gateCutStone,
         [
           archPoint(a, t0, z0, -0.019),
           archPoint(a, t1, z0, -0.019),
           archPoint(a, t1, z1, -0.019),
           archPoint(a, t0, z1, -0.019),
         ],
-        [v * 0.82, v * 0.91, v * 0.95]
+        [v * 0.82, v * 0.91, v * 0.95],
+        [vaultUV(a, t0, z0), vaultUV(a, t1, z0), vaultUV(a, t1, z1), vaultUV(a, t0, z1)]
       )
     }
   }
@@ -100,7 +102,8 @@ function bolster(b, m, a) {
         u = archPoint(a, t1, z, band),
         v = archPoint(a, t0, z, band)
       const tone = 0.8 + 0.2 * random()
-      b.face(m.coping, [p, q, u, v], [tone, tone * 0.99, tone * 0.91])
+      const face = [p, q, u, v]
+      b.face(m.gateCutStone, face, [tone * 1.4, tone * 1.25, tone * 1.03], face.map(portalUV))
       b.face(
         m.stone,
         [p, q, archPoint(a, t1, side * (Z_HALF - 0.005)), archPoint(a, t0, side * (Z_HALF - 0.005))],
@@ -201,16 +204,13 @@ function ashlar(b, m) {
           br = Math.min(y1, Math.max(y0, outsideHeight(r - 0.0001) - 0.055))
         for (const side of [-1, 1]) {
           const z = side * (Z_HALF + 0.026 + (shade - 0.78) * 0.027)
-          b.face(
-            m.stone,
-            [
-              [l, bl, z],
-              [r, br, z],
-              [r, y1, z],
-              [l, y1, z],
-            ],
-            [shade * 0.94, shade, shade * 0.95]
-          )
+          const front = [
+            [l, bl, z],
+            [r, br, z],
+            [r, y1, z],
+            [l, y1, z],
+          ]
+          b.face(m.gateCutStone, front, [shade * 0.94, shade, shade * 0.95], front.map(portalUV))
           b.face(
             m.foundation,
             [
@@ -436,6 +436,7 @@ function grandStairs(b, m, side) {
 }
 
 export function stoneBridge(b, m) {
+  dressMasonry(m, arches)
   const piers = [
     [-BANK_EDGE, -16.88],
     [-9.36, -7.5],

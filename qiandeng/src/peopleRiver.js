@@ -225,6 +225,47 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
     }
     return true
   }
+  // A nearby passenger can be under an opaque hood, with the stern oarsman
+  // below the frame. Test both sightlines before building a full articulated rig.
+  const coveredSolids = new Map()
+  for (const ship of ships) {
+    if (ship.spec.kind === 'covered' && ship.boxes) {
+      coveredSolids.set(ship, ship.boxes.map((coords) =>
+        new T.Box3(
+          new T.Vector3().fromArray(coords),
+          new T.Vector3().fromArray(coords, 3),
+        ).expandByScalar(-0.026),
+      ))
+    }
+  }
+  const seatedSamples = [
+    [0, 1.38, 0], [-0.20, 1.20, 0], [0.20, 1.20, 0], [0, 1.06, 0.23],
+    [-0.43, 0.80, 0.10], [0.43, 0.80, 0.10], [0, 0.60, -0.20], [0, 0.32, 0.32],
+  ]
+  const cabinInverse = new T.Matrix4(), sightRay = new T.Ray()
+  const eyes = [new T.Vector3(), new T.Vector3()]
+  const sampleWorld = new T.Vector3(), sampleLocal = new T.Vector3(), hit = new T.Vector3()
+  function passengerInSight(p) {
+    const solids = coveredSolids.get(p.ship)
+    if (!solids) return true
+    cabinInverse.copy(p.ship.group.matrixWorld).invert()
+    eyes[0].copy(viewpoint).applyMatrix4(cabinInverse)
+    eyes[1].set(viewpoint.x, -viewpoint.y, viewpoint.z).applyMatrix4(cabinInverse)
+    for (const sample of seatedSamples) {
+      sampleWorld.fromArray(sample).multiplyScalar(p.profile.height).applyMatrix4(base)
+      sampleLocal.copy(sampleWorld).applyMatrix4(cabinInverse)
+      for (let i = 0; i < eyes.length; i++) {
+        if (i === 1) sampleWorld.y *= -1
+        if (!sight.containsPoint(sampleWorld)) continue
+        const eye = eyes[i], end = eye.distanceToSquared(sampleLocal)
+        sightRay.origin.copy(eye)
+        sightRay.direction.subVectors(sampleLocal, eye).normalize()
+        if (!solids.some((box) => sightRay.intersectBox(box, hit) && eye.distanceToSquared(hit) < end))
+          return true
+      }
+    }
+    return false
+  }
   function distantPose(profile, job, walk, phase, seated, pixels, loading) {
     const { outer: cloth, lower: skirt, binding: trim } = profile.colors,
       { skin, id: index, hair, garment } = profile
@@ -399,7 +440,7 @@ export function riverPeople(scene, m, ships, shadeCharacter, groundAt) {
         job === 'porter' ? (0.5 + 0.5 * Math.sin(t * 0.9 + p.phase)) * (p.streetId ? p.current.pause : 1) : 0
       // A whole figure at this projected size has distinct hands and a readable face.
       // Always give a viewer within arm's reach the complete rig, on any screen.
-      if (camera && (distance < 5.0 || (pixels >= 67 && distance < 18))) {
+      if (camera && (distance < 5.0 || (pixels >= 67 && distance < 18)) && passengerInSight(p)) {
         part('shadow', 0, 0.003, 0.02, 0.43, 1, 0.34, 0xffffff)
         const figure = pool.draw(
           p.profile,

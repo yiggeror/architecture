@@ -55,7 +55,7 @@ function fretLine(b, mat, x, y, X, Y, z, thick) {
     [x + dx, y + dy, z],
   ])
 }
-function bay(b, m, x, w, bottom, top, kind, seed, bright, detail, wallmat, walltint) {
+function bay(b, m, x, w, bottom, top, kind, seed, bright, detail, wallmat, walltint, occupied) {
   const H = top - bottom,
     bar = (y, h, dep = 0.16, mat = wallmat, tint = walltint) =>
       surface(b, mat, x, y, 0.009, w, h, dep, tint, true)
@@ -98,7 +98,7 @@ function bay(b, m, x, w, bottom, top, kind, seed, bright, detail, wallmat, wallt
   bar(bottom + sill / 2, sill, 0.165, kind === 'loft' ? m.timber : wallmat)
   bar((head + top) / 2, top - head, 0.171, wallmat, walltint)
   for (const s of S) surface(b, wallmat, x + (s * (ww + w)) / 4, cy, 0, (w - ww) / 2, hh, 0.163, walltint)
-  panel(b, m, kind === 'round' ? art.windowRound : seed % 8, x, cy, 0.008, ww, hh, true, bright)
+  panel(b, m, kind === 'round' ? art.windowRound : seed % 8, x, cy, 0.008, ww, hh, occupied, bright)
   // The exposed mitered frames and screen sills protrude on both sides of the paper.
   for (const s of S) {
     surface(b, m.darkwood, x + (s * ww) / 2, cy, 0, 0.055, hh + 0.08, 0.106)
@@ -164,6 +164,15 @@ function elevation(b, m, w, H, side, floor, h, mode, base) {
             [0.92, 0.84, 0.72],
             [0.96, 0.91, 0.87],
           ][h.phase % 4]
+    // A household keeps a connected room awake, often next to a shuttered
+    // neighbour. The address and storey determine which end of the house.
+    const street = side === 'front',
+      activity = (h.id * 17 + floor * 13 + (side === 'rear' ? 7 : side === 'west' ? 11 : 0)) % 11,
+      litEnd = activity % n,
+      occupied =
+        j === litEnd ||
+        ((street || h.quay) && activity > 3 && Math.abs(j - litEnd) === 1) ||
+        (side !== 'rear' && activity === 3)
     bay(
       b,
       m,
@@ -173,10 +182,11 @@ function elevation(b, m, w, H, side, floor, h, mode, base) {
       base + H,
       kind,
       seed,
-      0.72 + 0.09 * ((h.phase + j) % 4),
+      occupied ? 0.63 + 0.19 * ((h.id + floor + j) % 5) : 0.92,
       h.row === 0 && side === 'front',
       pigment,
-      walltint
+      walltint,
+      occupied
     )
     if (j === 0) surface(b, m.timber, -w / 2, base + H * 0.5, 0, 0.127, H, 0.178)
     surface(b, m.timber, -w / 2 + (j + 1) * bw, base + H * 0.5, 0, 0.127, H, 0.178)

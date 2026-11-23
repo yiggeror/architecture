@@ -25,9 +25,12 @@ const survey = [
   [9.5, 78.8],
   [6.0, 80.5],
   [2.5, 78.8],
-  [0.5, 73.2],
-  [0.0, 63],
-  [-1.2, 51],
+  // The inbound lane swings to the west side of the basin before the parade
+  // turns towards the central arch. The returning east lane remains clear.
+  [-1.2, 73.2],
+  [-2.7, 63],
+  [-2.98, 56.5],
+  [-3.34, 51],
   [-5.8, 38],
   [-8.9, 27.7],
   [-8.0, 20.0],
@@ -45,11 +48,11 @@ const length = path.getLength(),
   count = 1600,
   speed = 1.04
 const sample = path.getSpacedPoints(count)
+// The first hull is turning across the near shoulder of the central arch.
+const openingPoint = new T.Vector3(-7.39, 0, 18.25)
 let opening = 0
 for (let i = 1; i < count; i++)
-  if (
-    Math.hypot(sample[i].x + 8, sample[i].z - 20) < Math.hypot(sample[opening].x + 8, sample[opening].z - 20)
-  )
+  if (sample[i].distanceToSquared(openingPoint) < sample[opening].distanceToSquared(openingPoint))
     opening = i
 export const route = { length, speed, duration: length / speed }
 export const traffic = [
@@ -59,7 +62,7 @@ export const traffic = [
   { name: '茶行驳船', kind: 'cargo', length: 8.1, beam: 2.04, deck: 0.54, offset: 98.5 },
   { name: '绣窗客舫', kind: 'pavilion', length: 10.7, beam: 2.67, deck: 0.71, offset: 156 },
   { name: '春水摆渡', kind: 'open', length: 6.7, beam: 1.68, deck: 0.48, offset: 192.5 },
-  { name: '桐油篷船', kind: 'covered', length: 7.25, beam: 1.86, deck: 0.52, offset: -31 },
+  { name: '桐油篷船', kind: 'covered', length: 7.25, beam: 1.86, deck: 0.52, offset: -37.45 },
 ]
 
 export function locate(boat, seconds, out, trail = 0) {

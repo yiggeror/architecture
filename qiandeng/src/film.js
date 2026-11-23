@@ -1,26 +1,33 @@
 import * as T from 'three'
 import { riverMist } from './haze.js'
-import { layeredView } from './layers.js'
+import { layeredView, sceneColor, sceneSamples } from './layers.js'
 
 const vertex = 'varying vec2 st;void main(){st=uv;gl_Position=vec4(position.xy,0.,1.);}'
 const finite = 'vec3 safeSample(vec3 c){return (any(isnan(c))||any(isinf(c)))?vec3(0.):clamp(c,0.,48.);}'
 const bright = `
 varying vec2 st;uniform sampler2D frame;uniform vec2 pixel;
 ${finite}
+vec3 extract(vec2 uv){
+ vec3 c=safeSample(texture2D(frame,uv).rgb);float v=max(c.r,max(c.g,c.b));
+ return c*(max(0.,v-.95)/(v+.14));
+}
+// The outer bilinear taps each cover two source texels. Include the middle
+// row and column so a thin lamp doesn't blink as it crosses a bloom cell.
 void main(){
  vec3 sum=vec3(0.);
- for(int j=0;j<4;j++){vec2 off=(vec2(float(j-2*(j/2)),float(j/2))-.5)*pixel*3.;
- vec3 c=safeSample(texture2D(frame,st+off).rgb);float v=max(c.r,max(c.g,c.b));
- sum+=c*(max(0.,v-.95)/(v+.14));}
- gl_FragColor=vec4(sum*.25,1.);}`
+ for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+  vec2 o=vec2(float(x),float(y));
+  sum+=extract(st+1.5*o*pixel)*(1.+abs(o.x))*(1.+abs(o.y));
+ }
+ gl_FragColor=vec4(sum/25.,1.);}`
 const blur = `
 varying vec2 st;uniform sampler2D frame;uniform vec2 pixel;
+vec3 pair(float radius){vec2 d=radius*pixel;return texture2D(frame,st+d).rgb+texture2D(frame,st-d).rgb;}
 void main(){
- vec3 sum=vec3(0.);float weights=0.;
- for(int i=-8;i<=8;i++){
-  float at=float(i),w=exp(-at*at/13.1);sum+=texture2D(frame,st+pixel*at).rgb*w;weights+=w;
- }
- gl_FragColor=vec4(sum/weights,1.);
+ // Linear filtering combines neighbouring taps of the original Gaussian.
+ vec3 sum=texture2D(frame,st).rgb*.1560093+pair(1.442997)*.2595019+
+   pair(3.369503)*.1244792+pair(5.301599)*.0331314+pair(7.241397)*.0048829;
+ gl_FragColor=vec4(sum,1.);
 }`
 const contact = `
 varying vec2 st;uniform sampler2D depthMap;uniform vec2 clipZ,lens;
@@ -41,7 +48,7 @@ void main(){
 }`
 const finish = `
 varying vec2 st;uniform sampler2D frame,glow,contactMap,airGlow,depthMap;
-uniform float day;uniform vec2 pixel,clipZ,focusLens;
+uniform float day,edgeMix;uniform vec2 pixel,clipZ,focusLens;
 ${finite}
 float depthAt(vec2 at){
   float z=texture2D(depthMap,at).r;return clipZ.x*clipZ.y/(clipZ.y-z*(clipZ.y-clipZ.x));
@@ -67,12 +74,30 @@ vec3 defocus(vec3 sharp){
  }
  return sum/weight;
 }
+#ifdef FILTER_EDGES
+// On implementations without multisampled HDR, follow the local luminance
+// edge. The contrast gate leaves texture and lettering in flat regions sharp.
+float luma(vec3 color){float v=dot(color,vec3(.2126,.7152,.0722));return sqrt(v/(1.+v));}
+vec3 alongEdge(vec3 center){
+ float nw=luma(safeSample(texture2D(frame,st+pixel*vec2(-1.,1.)).rgb));
+ float ne=luma(safeSample(texture2D(frame,st+pixel*vec2( 1.,1.)).rgb));
+ float sw=luma(safeSample(texture2D(frame,st+pixel*vec2(-1.,-1.)).rgb));
+ float se=luma(safeSample(texture2D(frame,st+pixel*vec2(1.,-1.)).rgb));
+ float c=luma(center),low=min(c,min(min(nw,ne),min(sw,se))),high=max(c,max(max(nw,ne),max(sw,se)));
+ if(high-low<max(.032,high*.14))return center;
+ vec2 dir=vec2(sw+se-nw-ne,nw+sw-ne-se);
+ float norm=min(abs(dir.x),abs(dir.y))+max(.0156,(nw+ne+sw+se)*.03125);
+ dir=clamp(dir/norm,-4.,4.)*pixel;
+ vec3 inner=.5*(texture2D(frame,st-dir/6.).rgb+texture2D(frame,st+dir/6.).rgb);
+ vec3 wide=inner*.5+.25*(texture2D(frame,st-dir*.5).rgb+texture2D(frame,st+dir*.5).rgb);
+ float value=luma(safeSample(wide));return value<low||value>high?inner:wide;
+}
+#endif
 void main(){
  vec3 c=safeSample(texture2D(frame,st).rgb);vec3 halo=texture2D(glow,st).rgb;
- vec3 left=texture2D(frame,st-vec2(pixel.x,0.)).rgb,right=texture2D(frame,st+vec2(pixel.x,0.)).rgb;
- vec3 top=texture2D(frame,st-vec2(0.,pixel.y)).rgb,down=texture2D(frame,st+vec2(0.,pixel.y)).rgb;
- vec3 lum=vec3(.24,.64,.12);float horizontal=abs(dot(right-left,lum)),vertical=abs(dot(down-top,lum));
- c=mix(c,horizontal>vertical?(top+down)*.5:(left+right)*.5,smoothstep(.045,.45,max(horizontal,vertical))*.42);
+ #ifdef FILTER_EDGES
+ c=mix(c,alongEdge(c),edgeMix);
+ #endif
  c=defocus(safeSample(c))*texture2D(contactMap,st).r;
  c+=texture2D(airGlow,st).rgb+halo*mix(.255,.085,day);c*=mix(1.01,.93,day);
  c*=mix(vec3(1.026,1.,.972),vec3(1.03,1.012,.98),day);
@@ -81,13 +106,14 @@ void main(){
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
 }`
-function target(depth = false) {
+function target(options = {}) {
   return new T.WebGLRenderTarget(1, 1, {
     type: T.HalfFloatType,
-    depthBuffer: depth,
+    depthBuffer: false,
     stencilBuffer: false,
     minFilter: T.LinearFilter,
     magFilter: T.LinearFilter,
+    ...options,
   })
 }
 function material(fragment, uniforms) {
@@ -100,13 +126,15 @@ function material(fragment, uniforms) {
   })
 }
 export function film(renderer, world, statics, camera, software, common) {
-  const plate = layeredView(renderer, world, statics)
-  const full = target(true),
-    small = target(),
-    blurred = target(),
-    cavity = target(),
-    air = target()
-  full.depthTexture = new T.DepthTexture(1, 1, T.UnsignedIntType)
+  const plate = layeredView(renderer, world, statics, software)
+  // Software rasterizers pay for covered samples in CPU time. The stationary
+  // stone plate still captures four samples; travelling views reconstruct edges
+  // at the full display grid. Hardware retains multisampling on every frame.
+  const samples = software ? 0 : sceneSamples(renderer)
+  const lightFormat = sceneColor(renderer)
+  const full = target({ ...lightFormat, samples, depthBuffer: true, depthTexture: new T.DepthTexture(1, 1, T.UnsignedIntType) })
+  const small = target(lightFormat), blurred = target(lightFormat), air = target(lightFormat)
+  const cavity = target({ format: T.RedFormat, type: T.UnsignedByteType })
   const post = new T.Scene(),
     cam = new T.Camera()
   const p = new T.BufferGeometry()
@@ -130,29 +158,18 @@ export function film(renderer, world, statics, camera, software, common) {
     airGlow: { value: air.texture },
     pixel: hi.uniforms.pixel,
     day: { value: 0 },
+    edgeMix: { value: 1 },
     depthMap: { value: full.depthTexture },
     clipZ: occ.uniforms.clipZ,
     focusLens: { value: new T.Vector2(1, 0) },
   })
   const eyeSpace = new T.Vector3()
-  const context = renderer.getContext()
-  const supported = context.getInternalformatParameter(context.RENDERBUFFER, context.RGBA16F, context.SAMPLES)
-  const nearSamples = Array.from(supported ?? []).filter(n => n >= 2 && n <= 4).sort((a,b) => a-b)[0] ?? 0
-  // The silk fringe and loose hairs cover fractions of a pixel in a close
-  // viewport. Multisample the moving pass there; the distant city keeps its budget.
-  function portraitEdges(active) {
-    const samples = active ? nearSamples : 0
-    if (full.samples === samples) return
-    full.dispose()
-    full.samples = samples
-    full.depthTexture.needsUpdate = true
-  }
+  if (!samples) resolve.defines.FILTER_EDGES = 1
   function focus(point) {
     const lens = resolve.uniforms.focusLens.value
-    if (!point) { portraitEdges(false); lens.set(1, 0); return }
+    if (!point) { lens.set(1, 0); return }
     eyeSpace.copy(point).applyMatrix4(camera.matrixWorldInverse)
     const depth = -eyeSpace.z
-    portraitEdges(depth > .12 && depth < (full.samples ? 4.1 : 3.3))
     if (depth <= .22 || depth >= 4.4) { lens.set(1, 0); return }
     const extent = depth * Math.tan(T.MathUtils.degToRad(camera.fov / 2))
     const centred = Math.max(Math.abs(eyeSpace.x) / (extent * camera.aspect), Math.abs(eyeSpace.y) / extent)
@@ -181,10 +198,15 @@ export function film(renderer, world, statics, camera, software, common) {
     renderer.render(post, cam)
   }
   function draw(now) {
-    plate.render(full, camera, now, software ? 4800 : 680)
     const changed =
       lastEye.distanceToSquared(camera.position) > 0.0001 || lastAim.angleTo(camera.quaternion) > 0.001
-    if (!software || changed || Math.abs(now - filterTime) > 195) {
+    const filters = !software || changed || Math.abs(now - filterTime) > 195
+    // The stationary wide view reuses its contact/air maps. Only resolve the
+    // 24-bit scene depth when a post pass actually samples this frame's depth.
+    full.resolveDepthBuffer = filters || resolve.uniforms.focusLens.value.y > .0001
+    const cached = plate.render(full, camera, now, software ? 4800 : 680)
+    resolve.uniforms.edgeMix.value = software && cached && sceneSamples(renderer) ? .43 : 1
+    if (filters) {
       filterTime = now
       lastEye.copy(camera.position)
       lastAim.copy(camera.quaternion)

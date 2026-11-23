@@ -1,5 +1,6 @@
 import * as T from 'three'
 import { generator } from './mesh.js'
+import { drawLampSilk, paperLight } from './wardLampPaint.js'
 import { wardAddresses } from './wardsLayout.js'
 
 export const art = {
@@ -97,7 +98,7 @@ function lotus(g, x, y, r, fill, outline, n = 7) {
   g.fill()
   g.restore()
 }
-function paper(g, id) {
+function paper(g, id, lit = false) {
   const pairs = [
     ['#7b4d35', '#f3cd84'],
     ['#775037', '#ffe5a7'],
@@ -110,16 +111,23 @@ function paper(g, id) {
   ]
   const k = id % 8,
     [shadow, warm] = pairs[k]
-  const gr = g.createRadialGradient(133, 150, 10, 120, 133, 185)
-  gr.addColorStop(0, warm)
-  gr.addColorStop(0.6, warm)
-  gr.addColorStop(1, shadow)
-  g.fillStyle = gr
-  g.fillRect(0, 0, 256, 256)
-  g.strokeStyle = '#4e3931'
+  if (lit) {
+    g.save()
+    g.scale(2, 2)
+    paperLight(g, k)
+    g.restore()
+  } else {
+    const gr = g.createRadialGradient(133, 150, 10, 120, 133, 185)
+    gr.addColorStop(0, warm)
+    gr.addColorStop(0.6, warm)
+    gr.addColorStop(1, shadow)
+    g.fillStyle = gr
+    g.fillRect(0, 0, 256, 256)
+  }
+  g.strokeStyle = lit ? '#291b14' : '#4e3931'
   g.lineWidth = 8
   g.strokeRect(4, 4, 248, 248)
-  g.strokeStyle = '#53382c'
+  g.strokeStyle = lit ? '#271b16' : '#53382c'
   g.lineWidth = 4.8
   const line = (x, y, X, Y) => {
     g.beginPath()
@@ -311,24 +319,10 @@ function paintedTile(g, id, rng) {
     return
   }
   if (id < 27) {
-    const base = [
-        ['#82362e', '#f6945d'],
-        ['#9d652a', '#fbd88c'],
-        ['#68846d', '#cee2aa'],
-      ][id - 24],
-      gr = g.createLinearGradient(0, 0, 0, 256)
-    gr.addColorStop(0, base[0])
-    gr.addColorStop(0.46, base[1])
-    gr.addColorStop(0.63, base[1])
-    gr.addColorStop(1, base[0])
-    g.fillStyle = gr
-    g.fillRect(0, 0, 256, 256)
-    for (let j = 0; j < 9; j++) {
-      lotus(g, j * 35 - 7, 65 + 11 * (j % 2), 10, '#d89555', '#c47e48', 5)
-      lotus(g, j * 35 - 7, 198 - 11 * (j % 2), 10, '#d89555', '#c47e48', 5)
-    }
-    g.fillStyle = '#e1ac62'
-    for (const y of [19, 26, 229, 237]) g.fillRect(0, y, 256, 2)
+    g.save()
+    g.scale(2, 2)
+    drawLampSilk(g, id - 24, false)
+    g.restore()
     return
   }
   if (id === 27) {
@@ -386,7 +380,8 @@ function material(map, emission) {
 export function wardPaint(m) {
   if (m.wardSigns) return
   let signs = null,
-    fabric = null
+    fabric = null,
+    transmission = null
   if (typeof document !== 'undefined') {
     const s = document.createElement('canvas')
     s.width = 2048
@@ -423,11 +418,40 @@ export function wardPaint(m) {
       dc.restore()
     }
     fabric = texture(c)
+    const e = document.createElement('canvas')
+    e.width = 1024
+    e.height = 512
+    const ec = e.getContext('2d')
+    ec.fillStyle = 'black'
+    ec.fillRect(0, 0, e.width, e.height)
+    for (const k of [0, 1, 2, 3, 4, 5, 6, 7, 24, 25, 26, 27, 28, 29, 30, 31]) {
+      ec.save()
+      ec.translate((k % 8) * 128, Math.floor(k / 8) * 128)
+      ec.beginPath()
+      ec.rect(0, 0, 128, 128)
+      ec.clip()
+      if (k >= 24 && k <= 26) drawLampSilk(ec, k - 24, true)
+      else {
+        if (k === 27) {
+          ec.beginPath()
+          ec.arc(64, 64, 50, 0, Math.PI * 2)
+          ec.clip()
+        }
+        ec.scale(0.5, 0.5)
+        paper(ec, k === 27 ? 2 : k % 8, true)
+      }
+      ec.restore()
+    }
+    transmission = texture(e)
   }
   m.wardSigns = material(signs, 0.09)
   m.wardPaint = material(fabric, 0.035)
-  m.wardScreens = material(fabric, 0.65)
-  m.wardLampSilk = material(fabric, 1.6)
+  m.wardScreens = material(fabric, 1.66)
+  m.wardScreens.emissive.set(0xffddb0)
+  m.wardScreens.emissiveMap = transmission
+  m.wardLampSilk = material(fabric, 2.85)
+  m.wardLampSilk.emissive.set(0xffdeb0)
+  m.wardLampSilk.emissiveMap = transmission
   m.wardSigns.name = '商号金字'
   m.wardPaint.name = '彩绘织锦'
   m.wardScreens.name = '街窗绢纸'

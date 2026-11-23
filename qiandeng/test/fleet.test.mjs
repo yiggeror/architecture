@@ -9,6 +9,7 @@ import { launchQuays } from '../src/festivalSky.js'
 import { harbor } from '../src/harbor.js'
 import { locate, route, traffic } from '../src/fleetRoute.js'
 import { procession } from '../src/procession.js'
+import { stations, updateLens } from '../src/stations.js'
 
 const scene = new T.Scene(),
   finishes = materials(),
@@ -44,6 +45,70 @@ function strokeEnvelopes() {
   }))
 }
 const sweeps = strokeEnvelopes()
+
+test('the river arrival frames three open arches, the armillary and the fish in both orientations', () => {
+  const station = stations[0],
+    camera = new T.PerspectiveCamera(),
+    v = new T.Vector3(),
+    uv = new T.Vector2()
+  const project = (point) => {
+    point.project(camera)
+    return uv.set((1 + point.x) / 2, (1 - point.y) / 2)
+  }
+  const inRange = (value, lo, hi) => assert.ok(value >= lo && value <= hi, `${value} outside [${lo}, ${hi}]`)
+  camera.userData.portraitLens = station.portraitLens
+  for (const [w, h] of [[575, 1076], [390, 844], [1280, 720]]) {
+    const portrait = w < h
+    updateLens(camera, w, h)
+    camera.userData.viewportHeight = h
+    camera.position.fromArray(portrait ? station.portraitEye : station.eye)
+    camera.lookAt(...(portrait ? station.portraitTarget : station.target))
+    camera.updateMatrixWorld()
+    parade.update(0, false, camera)
+
+    const crown = project(v.set(0, 9.08, -4.5))
+    inRange(crown.x, 0.49, 0.53)
+    inRange(crown.y, 0.515, 0.545)
+    inRange(project(v.set(0, 11.34, -4.68)).y, 0.48, 0.51)
+    for (const x of [-16.88, 16.88]) inRange(project(v.set(x, 1.82, -4.5)).x, 0.025, 0.99)
+    const instrument = project(v.set(7.8, 77.1, -101.45))
+    inRange(instrument.x, 0.50, 0.57)
+    inRange(instrument.y, 0.19, 0.26)
+
+    const fish = new T.Box2()
+    ships[0].traverseVisible((mesh) => {
+      if (!mesh.isMesh) return
+      const vertices = mesh.geometry.attributes.position
+      for (let i = 0; i < vertices.count; i++) {
+        v.fromBufferAttribute(vertices, i).applyMatrix4(mesh.matrixWorld)
+        if (v.y >= -0.02) fish.expandByPoint(project(v))
+      }
+    })
+    inRange(fish.min.x, portrait ? 0.0 : 0.27, portrait ? 0.095 : 0.36)
+    inRange(fish.max.x, portrait ? 0.37 : 0.42, 0.48)
+    inRange(fish.min.y, 0.535, 0.60)
+    inRange(fish.max.y, 0.635, 0.73)
+    for (const [i, lo, hi] of [[1, 0.47, 0.54], [4, portrait ? 0.86 : 0.61, portrait ? 0.98 : 0.70]]) {
+      const boat = project(v.set(0, 1.1, 0).applyMatrix4(ships[i].matrixWorld))
+      inRange(boat.x, lo, hi)
+      inRange(boat.y, 0.59, 0.68)
+    }
+    const hood = [], ray = new T.Raycaster()
+    ships[6].traverseVisible((mesh) => { if (mesh.material === finishes.ink) hood.push(mesh) })
+    const canopyAt = (x, y) => {
+      ray.setFromCamera(uv.set(2 * x - 1, 1 - 2 * y), camera)
+      return ray.intersectObjects(hood, false).length > 0
+    }
+    assert.equal(canopyAt(0.46, portrait ? 0.78 : 0.84), false)
+    assert.equal(canopyAt(0.46, portrait ? 0.83 : 0.88), true)
+    if (w === 575) {
+      for (const x of [0.26, 0.66]) assert.ok(canopyAt(x, 0.99))
+      for (const x of [0.19, 0.75]) assert.ok(!canopyAt(x, 0.99))
+    }
+    const forward = camera.getWorldDirection(v).multiplyScalar(2).add(camera.position)
+    assert.equal(parade.block(camera.position, forward, 0.155), false)
+  }
+})
 
 function hullSeparation(a, p, b, q) {
   let greatest = -Infinity
@@ -134,11 +199,23 @@ test('moving hulls, oars, cabins, pennants and carp fit the built masonry in bot
         mesh.geometry.computeBoundingBox()
         box.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld)
         if (box.max.z < -9 - Z_HALF - 0.2 || box.min.z > -9 + Z_HALF + 0.2) return
+        let closeToVault = false
         for (const x of [box.min.x, (box.min.x + box.max.x) / 2, box.max.x]) {
           const opening = Math.abs(x) < 7.5 ? 'central' : Math.abs(x - 13.12) < 3.76 ? 'east' : null
           assert.ok(opening, ship.name + ' touches a pier at ' + x)
-          assert.ok(box.max.y + 0.13 < ceiling(x), ship.name + ' touches vault stone at ' + x)
+          if (box.max.y + 0.13 >= ceiling(x)) closeToVault = true
           visits[i].add(opening)
+        }
+        if (closeToVault) {
+          // At the exit the raised bow is in open water while the stern is
+          // still inside the arch. Measure the actual bronze, timber and stone.
+          const g = mesh.geometry
+          if (!g.boundsTree) g.boundsTree = new MeshBVH(g, { indirect: true })
+          else if (g.attributes.position.usage === T.DynamicDrawUsage) g.boundsTree.refit()
+          for (const tree of trees) {
+            const hit = tree.closestPointToGeometry(g, mesh.matrixWorld, {}, null, 0.13, 0.13)
+            assert.ok(!hit || hit.distance >= 0.13, `${ship.name} at ${t.toFixed(2)}s touches vault stone`)
+          }
         }
       })
     }

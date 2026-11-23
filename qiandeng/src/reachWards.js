@@ -24,7 +24,7 @@ export function reachWards(b, m, world) {
     })
     block.finish()
     furnish.at(t.x, t.y, t.z, t.yaw, () => {
-      for (const h of row.address) furnish.at(h.x, 0, h.z, 0, () => inside(furnish, m, h))
+      for (const h of row.address) furnish.at(h.x, 0, h.z, 0, () => inside(furnish, m, h, world))
     })
     furnish.finish()
     for (const mesh of [...workshop.children]) hangDetailAtDistance(b.scene, mesh, 105 + t.width * 0.4)

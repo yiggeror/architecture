@@ -1,4 +1,5 @@
 import * as T from 'three'
+import { scenicVisibility } from './scenicVisibility.js'
 import { combineGeometry, farIndices, indexView, spatialSections } from './scenicGeometry.js'
 
 // Both quantities are in metres. The first is the world span of one screen
@@ -168,6 +169,38 @@ export function scenicDetail(statics) {
   const lastEye = new T.Vector3(Infinity, 0, 0)
   const lastRotation = new T.Quaternion()
   let movedAt = -Infinity
+  const view = new T.Frustum(), projection = new T.Matrix4()
+  const mirrors = (statics.parent?.children ?? []).filter(o => o.userData.waterSurface).map(water => ({
+    surface: water, frustum: new T.Frustum(), bounds: new T.Box3().setFromObject(water), visible: false,
+  }))
+  const preparedEye = new T.Vector3(Infinity, 0, 0), preparedAim = new T.Quaternion()
+  const preparedProjection = new T.Matrix4()
+  let preparedScale
+  function visibleFromWater(box, mirror) {
+    if (!mirror.visible || box.max.y < mirror.surface.position.y - .1) return false
+    // Oblique clipping moves the mirror's near and far planes. Its four side
+    // planes stay exact under reflection, including during a vertical pan.
+    for (let i = 0; i < 4; i++) {
+      const p = mirror.frustum.planes[i], n = p.normal
+      if (n.x * (n.x >= 0 ? box.max.x : box.min.x) +
+          n.y * (n.y >= 0 ? box.max.y : box.min.y) +
+          n.z * (n.z >= 0 ? box.max.z : box.min.z) + p.constant < -.001) return false
+    }
+    return true
+  }
+  function updateViews(camera) {
+    view.setFromProjectionMatrix(projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+    for (const mirror of mirrors) {
+      const y = mirror.surface.position.y
+      mirror.visible = camera.position.y > y && view.intersectsBox(mirror.bounds)
+      if (!mirror.visible) continue
+      mirror.frustum.copy(view)
+      for (const plane of mirror.frustum.planes) {
+        plane.constant += 2 * y * plane.normal.y
+        plane.normal.y *= -1
+      }
+    }
+  }
 
   function hide(node) {
     if (node.o) {
@@ -188,6 +221,11 @@ export function scenicDetail(statics) {
   }
 
   function choose(node, eye, scale) {
+    // District buffers can require several megabytes of vertex copies. Build
+    // a new distance variant only for a district this visitor or a water
+    // surface can draw. Turning a corner resolves it before that same frame.
+    if (mirrors.length && !view.intersectsBox(node.bounds) &&
+        !mirrors.some(mirror => visibleFromWater(node.bounds, mirror))) return
     const distance = node.bounds.distanceToPoint(eye)
     const level = levelAt(distance * scale)
     if (node.o) {
@@ -234,6 +272,7 @@ export function scenicDetail(statics) {
   }
 
   function update(camera, height, small) {
+    observe(camera)
     const now = performance.now()
     const eye = camera.position
     if (
@@ -247,14 +286,25 @@ export function scenicDetail(statics) {
     const moving = now - movedAt < 235
     const scale =
       ((small ? 1.46 : 1.13) * (moving ? 1.41 : 1) * (camera.aspect < 0.82 ? 1.17 : 1)) / focus
+    if (preparedEye.equals(eye) && preparedAim.equals(camera.quaternion) && scale === preparedScale &&
+        preparedProjection.equals(camera.projectionMatrix)) return
+    preparedEye.copy(eye)
+    preparedAim.copy(camera.quaternion)
+    preparedProjection.copy(camera.projectionMatrix)
+    preparedScale = scale
+    if (mirrors.length) updateViews(camera)
     for (const root of roots) choose(root, eye, scale)
     // Touring several valleys must not retain all their historical GPU buffers.
     if (cacheBytes > cacheBudget) {
       for (const [geometry, entry] of cached) {
-        if (!entry.node.proxy.visible || entry.node.proxy.geometry !== geometry) release(geometry, entry)
+        const node = entry.node
+        if (!node.proxy.visible || node.proxy.geometry !== geometry ||
+            (mirrors.length && !view.intersectsBox(node.bounds) && !mirrors.some(m => visibleFromWater(node.bounds, m))))
+          release(geometry, entry)
         if (cacheBytes <= cacheBudget) break
       }
     }
   }
+  const observe = scenicVisibility(statics)
   return { update }
 }

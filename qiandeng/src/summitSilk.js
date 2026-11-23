@@ -192,8 +192,41 @@ function atlas() {
   tex.anisotropy = 4
   return tex
 }
+// Amber trapped at the lip gives the glass a different colour and apparent
+// thickness from the hot centre, including when the city is seen in daylight.
+function opalGlass() {
+  const width = 128, height = 64, pixels = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    const v = (y + .5) / height, shoulder = Math.sin(Math.PI * v) ** .66
+    for (let x = 0; x < width; x++) {
+      const a = Math.PI * 2 * (x + .5) / width
+      const flute = .5 + .5 * Math.cos(12 * a + .46 * Math.sin(Math.PI * 2 * v))
+      const petal = Math.exp(-((v - .21 - .14 * flute) ** 2) / .0013)
+      const i = (y * width + x) * 4
+      pixels[i] = 221 + 32 * shoulder - 26 * petal
+      pixels[i + 1] = 133 + 102 * shoulder + 10 * flute - 40 * petal
+      pixels[i + 2] = 63 + 107 * shoulder + 12 * flute - 28 * petal
+      pixels[i + 3] = 255
+    }
+  }
+  const texture = new T.DataTexture(pixels, width, height)
+  texture.colorSpace = T.SRGBColorSpace
+  texture.wrapS = T.RepeatWrapping
+  texture.magFilter = T.LinearFilter
+  texture.minFilter = T.LinearMipmapLinearFilter
+  texture.generateMipmaps = true
+  texture.needsUpdate = true
+  return texture
+}
+
 export function palaceMaterials(m) {
   const tex = atlas()
+  const glass = opalGlass()
+  m.summitGlass = new T.MeshStandardMaterial({
+    name: '浑仪琉璃灯', color: 0xfff5d2, emissive: 0xffe1a3, emissiveIntensity: 2.85,
+    map: glass, emissiveMap: glass, roughness: .23, metalness: .09,
+  })
+  m.summitGlass.userData.emitter = true
   m.summitScreen = new T.MeshStandardMaterial({
     name: 'summitScreen',
     color: 0xffefd2,

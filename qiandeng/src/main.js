@@ -27,11 +27,8 @@ import { festivalSky, launchQuays } from './festivalSky.js'
 import { weather } from './weather.js'
 import { procession } from './procession.js'
 import { reachFerries } from './reachFerries.js'
-const root = document.querySelector('#court'),
-  status = document.querySelector('#loading')
+const root = document.querySelector('#court')
 const phaseButtons = document.querySelectorAll('button[data-mode]')
-if (location.pathname.endsWith(encodeURIComponent('千灯渡') + '.html'))
-  document.getElementById('character-album').href = '千灯渡-人物图录.html'
 let applyLighting
 function mode(day) {
   const phase = day ? 'day' : 'night'
@@ -52,20 +49,33 @@ function highPalace(b, m, world) {
   }
   b.at(palaceEast, palaceRise, 0, 0, () => summit(b, m, elevated))
 }
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
+// Yield a paint between construction stages so the frontispiece can report real progress.
+const nextPaint = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+// The city has many opaque streets behind its near riverfront. Fill depth in
+// distance bands and still batch materials within a band. Explicit renderOrder
+// continues to govern skies, layered paint and post-processing.
+function opaqueOrder(a, b) {
+  if (a.groupOrder !== b.groupOrder) return a.groupOrder - b.groupOrder
+  if (a.renderOrder !== b.renderOrder) return a.renderOrder - b.renderOrder
+  const bandA = Math.floor(Math.log2(Math.max(.00001, 1 - a.z)))
+  const bandB = Math.floor(Math.log2(Math.max(.00001, 1 - b.z)))
+  return bandB - bandA || a.material.id - b.material.id || a.z - b.z || a.id - b.id
+}
 async function openCity() {
-  const renderer = new T.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
+  const renderer = new T.WebGLRenderer({ antialias: false, depth: false, powerPreference: 'high-performance' })
   const gl = renderer.getContext(),
     info = gl.getExtension('WEBGL_debug_renderer_info')
   const software = Boolean(
     info && /swiftshader|llvmpipe|software/i.test(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)),
   )
+  renderer.setOpaqueSort(opaqueOrder)
   renderer.toneMapping = T.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1
   const canvas = renderer.domElement
   canvas.setAttribute('aria-label', '千灯渡，雨夜灯会江城，可沿视线自由飞行')
   canvas.setAttribute('aria-describedby', 'travel-hint')
   canvas.tabIndex = 0
+  canvas.style.width = canvas.style.height = '100%'
   root.prepend(canvas)
   const scene = new T.Scene(),
     statics = new T.Scene(),
@@ -73,11 +83,12 @@ async function openCity() {
   scene.add(statics, moving)
   const camera = new T.PerspectiveCamera(56, 1, 0.075, 990)
   camera.layers.enable(1)
-  const m = materials(),
-    world = lightRegistry()
-  const sky = festivalSky(scene, world)
+  const world = lightRegistry()
+  const initialDay = document.documentElement.dataset.mode === 'day'
+  const sky = festivalSky(scene, world, initialDay)
+  const m = materials()
   const regionStats = []
-  for (const [build, label] of [
+  const districts = [
     [land, '云崖'],
     [reachLand, '沿江山城'],
     [reachBridges, '长桥'],
@@ -91,30 +102,37 @@ async function openCity() {
     [harbor, '码头'],
     [garden, '雨庭'],
     [launchQuays, '放灯埠'],
-  ]) {
-    status.textContent = '正在展开' + label + '…'
-    await tick()
+  ]
+  const totalStages = districts.length + 6
+  let stage = 0
+  async function advance(label) {
+    window.updateLoading(label, stage++, totalStages)
+    await nextPaint()
+  }
+  for (const [build, label] of districts) {
+    await advance(label)
     const b = new Mason(statics),
       first = statics.children.length
     build(b, m, world)
     b.finish()
-    const meshes = []
-    for (const object of statics.children.slice(first)) {
-      object.traverse((mesh) => {
-        if (mesh.isMesh) meshes.push(mesh)
+    if (typeof __CITY_REVIEW__ !== 'undefined' && __CITY_REVIEW__) {
+      const meshes = []
+      for (const object of statics.children.slice(first)) {
+        object.traverse((mesh) => {
+          if (mesh.isMesh) meshes.push(mesh)
+        })
+      }
+      regionStats.push({
+        name: label,
+        meshes: meshes.length,
+        faces: meshes.reduce(
+          (n, o) => n + (o.geometry.index?.count || o.geometry.attributes.position.count) / 3,
+          0,
+        ),
       })
     }
-    regionStats.push({
-      name: label,
-      meshes: meshes.length,
-      faces: meshes.reduce(
-        (n, o) => n + (o.geometry.index?.count || o.geometry.attributes.position.count) / 3,
-        0,
-      ),
-    })
   }
-  status.textContent = '正在点亮灯火…'
-  await tick()
+  await advance('灯舟与浑仪')
   const northFalls = headwaterMotion(moving, m, world)
   const dais = new T.Group()
   dais.position.set(palaceEast, palaceRise, 0)
@@ -123,11 +141,13 @@ async function openCity() {
     ferries = reachFerries(moving, m, world),
     palace = summitMotion(dais, m, world),
     cliffs = landMotion(moving, m, world)
-  const lighting = lightCity(renderer, statics, world),
+  await advance('江城灯影')
+  const lighting = await lightCity(renderer, statics, world, () => advance('白昼投影')),
     water = river(scene, statics, renderer, lighting.common, software)
   const gardenWater = river(scene, statics, renderer, lighting.common, software, gardenBasin())
   const valleyWater = river(scene, statics, renderer, lighting.common, software, lowerRiver())
   const waters = [water, gardenWater, valleyWater]
+  await advance('水面与雨幕')
   const air = weather(
     scene,
     world,
@@ -141,24 +161,34 @@ async function openCity() {
     waters.map((surface) => surface.mesh),
     (a, b, r) => fleet.block(a, b, r) || ferries.block(a, b, r) || gears.block(a, b, r),
   )
+  await advance('街巷与屋脊')
   const detail = scenicDetail(statics)
+  // Roofs, streets and LOD proxies have permanent world transforms. All views,
+  // including water and shadow passes, can share them with the moving fleet.
+  statics.updateMatrixWorld(true)
+  statics.traverse((object) => {
+    object.matrixAutoUpdate = false
+    object.matrixWorldAutoUpdate = false
+  })
+  scene.matrixWorldAutoUpdate = false
   world.characterFloor = (x, z, nominalY) => collision.floor(x, z, nominalY + 0.085, 0.195) ?? nominalY
   const portraitLight = characterStreetLight(renderer, world, lighting.common)
   world.shadeCharacter = portraitLight.shade
-  lighting.shade(statics, software)
-  lighting.shade(moving, false, software)
+  lighting.shade(statics)
+  lighting.shade(moving, software)
   const cinema = film(renderer, scene, statics, camera, software, lighting.common),
     walk = navigation(canvas, camera, collision)
   let day = false,
-    quality = software ? 0.77 : 1,
     pinned = false
   const size = new T.Vector2()
   let previousWidth = 0,
     previousHeight = 0
   function resize() {
     const changed = previousWidth !== innerWidth || previousHeight !== innerHeight
-    const limit = software ? 1 : Math.min(1.65, Math.sqrt(2190000 / (innerWidth * innerHeight)))
-    const ratio = Math.min(devicePixelRatio, Math.max(0.66, limit)) * quality
+    // Keep one stable physical sampling grid during travel. On phones with a GPU,
+    // a high-density display gets up to 2.25 samples per CSS pixel on each axis.
+    const budgetRatio = Math.sqrt(2800000 / (innerWidth * innerHeight))
+    const ratio = software ? 1 : Math.max(1, Math.min(devicePixelRatio, 2.25, budgetRatio))
     if (!changed && renderer.getPixelRatio() === ratio) return
     updateLens(camera, innerWidth, innerHeight)
     if (changed) {
@@ -166,8 +196,7 @@ async function openCity() {
       previousWidth = innerWidth
       previousHeight = innerHeight
     }
-    renderer.setPixelRatio(ratio)
-    renderer.setSize(innerWidth, innerHeight)
+    renderer.setDrawingBufferSize(innerWidth, innerHeight, ratio)
     renderer.getDrawingBufferSize(size)
     camera.userData.viewportHeight = size.y
     cinema.size(size.x, size.y)
@@ -187,17 +216,12 @@ async function openCity() {
     for (const surface of waters) surface.invalidate()
   })
   resize()
-  mode(document.documentElement.dataset.mode === 'day')
+  await sky.ready
+  mode(initialDay)
   let elapsed = 0,
     started = false,
-    last = performance.now(),
-    measure = 0,
-    total = 0
+    last = performance.now()
   const cityCentre = new T.Vector3(65, 71, -217)
-  const lastEye = camera.position.clone(),
-    lastRotation = camera.quaternion.clone()
-  let lastMotion = -1e5,
-    swift = false
   function visitFigure() {
     const params = new URLSearchParams(location.hash.slice(1)),
       key = params.get('person')
@@ -231,13 +255,11 @@ async function openCity() {
       }
       if (best >= portrait.distance - .035) break
     }
-    if (best > 0.33) {
-      walk.arrive(eye.toArray(), focus.toArray())
-      document.getElementById('character-album').hash = 'person=' + Number(key)
-    }
+    if (best > 0.33) walk.arrive(eye.toArray(), focus.toArray())
   }
   visitFigure()
   addEventListener('hashchange', visitFigure)
+  const coarsePointer = window.matchMedia('(pointer: coarse)')
   function draw(t) {
     northFalls.update(t, day)
     sky.update(t, day)
@@ -261,60 +283,48 @@ async function openCity() {
       camera.updateProjectionMatrix()
     }
     cinema.focus(sitter)
-    if (software) {
-      const now = performance.now(),
-        moved = !lastEye.equals(camera.position) || lastRotation.angleTo(camera.quaternion) > 0.0001
-      if (moved) {
-        lastMotion = now
-        lastEye.copy(camera.position)
-        lastRotation.copy(camera.quaternion)
-      }
-      const next = !pinned && now - lastMotion < 240
-      if (next !== swift) {
-        swift = next
-        lighting.fast(swift)
-        cinema.invalidate()
-        for (const surface of waters) surface.invalidate()
-      }
-    }
-    detail.update(camera, size.y, software || window.matchMedia('(pointer: coarse)').matches)
+    detail.update(camera, size.y, software || coarsePointer.matches)
+    // Three uses the same moving transforms in every river view and the main view.
+    for (const object of scene.children)
+      if (object.matrixWorldAutoUpdate) object.updateMatrixWorld()
     const stamp = t * 1000
     for (const surface of waters) surface.reflect(camera, stamp)
     cinema.draw(stamp)
   }
+  // Keep input from queueing several obsolete camera views behind a busy GPU.
+  // The very first fence also keeps the frontispiece up until the gate, boats
+  // and mirrors have actually finished drawing at festival time zero.
+  const submitted = []
+  let firstSubmitted = false
   function frame(now) {
-    if (started && !pinned && !document.hidden) elapsed += Math.min(0.23, Math.max(0, now - last) / 1000)
-    started = true
-    if (!pinned) {
-      if (document.documentElement.dataset.ready && !document.hidden) {
-        const dt = now - last
-        if (dt < 3500) {
-          measure++
-          total += dt
+    while (submitted.length && gl.clientWaitSync(submitted[0], 0, 0) !== gl.TIMEOUT_EXPIRED)
+      gl.deleteSync(submitted.shift())
+    if (!document.hidden && !pinned && !gl.isContextLost()) {
+      if (firstSubmitted && !document.documentElement.dataset.ready) {
+        if (!submitted.length) {
+          window.updateLoading('水关初照', totalStages, totalStages)
+          window.finishLoading()
+          last = now
         }
-        if (measure >= (software ? 7 : 15)) {
-          const avg = total / measure
-          if (avg > 54 && quality > (software ? 0.62 : 0.69)) {
-            quality = Math.max(software ? 0.62 : 0.69, quality - 0.085)
-          } else if (avg < 24 && quality < 0.99) {
-            quality = Math.min(1, quality + 0.045)
-          }
-          measure = 0
-          total = 0
+      } else if (submitted.length < 2) {
+        if (started) elapsed += Math.min(.23, Math.max(0, now - last) / 1000)
+        resize()
+        walk.step(now)
+        try {
+          draw(elapsed)
+        } catch (error) {
+          console.error(error)
+          window.showLoadingError('场景绘制遇到问题，请重新打开灯城。')
+          return
         }
+        const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)
+        if (fence) { submitted.push(fence); gl.flush() }
+        firstSubmitted = started = true
+        last = now
       }
-      // Resizing clears the WebGL drawing buffer. Present a complete city
-      // frame at the new size before the browser gets to composite the canvas.
-      resize()
-      walk.step(now)
-      draw(elapsed)
-      if (!document.documentElement.dataset.ready) {
-        document.documentElement.dataset.ready = 'true'
-        root.setAttribute('aria-busy', 'false')
-        status.remove()
-      }
+    } else {
+      last = now
     }
-    last = now
     requestAnimationFrame(frame)
   }
   if (typeof __CITY_REVIEW__ !== 'undefined' && __CITY_REVIEW__) {
@@ -341,7 +351,6 @@ async function openCity() {
       },
       pin(t = 0) {
         pinned = true
-        quality = 1
         resize()
         for (const surface of waters) surface.invalidate()
         draw(t)
@@ -362,18 +371,18 @@ async function openCity() {
         return day
       },
       get quality() {
-        return quality
+        return renderer.getPixelRatio()
       },
     }
   }
+  await advance('水关初照')
   requestAnimationFrame(frame)
 }
 requestAnimationFrame(() =>
   requestAnimationFrame(() =>
     openCity().catch((e) => {
       console.error(e)
-      root.setAttribute('aria-busy', 'false')
-      status.textContent = '场景启动遇到问题。请启用 WebGL 2 硬件加速后重新打开。'
+      window.showLoadingError('场景启动遇到问题。请启用浏览器的 WebGL 2 硬件加速后重新打开。')
     }),
   ),
 )

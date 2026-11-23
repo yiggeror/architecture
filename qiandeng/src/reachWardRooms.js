@@ -18,13 +18,34 @@ function fill(g, x, y, w, h, c) {
   g.fillStyle = c
   g.fillRect(x, y, w, h)
 }
-function lamp(g, x, y, r, bright) {
-  stroke(g, x, y - r * 3.3, x, y - r, 1.6, bright ? '#281907' : '#6b4e38')
-  g.fillStyle = bright ? '#ffc96e' : '#f9c476'
+function lamp(g, x, y, r, bright, standing = false, crimson = false) {
+  const ink = bright ? '#49321f' : '#5a4938'
+  const silk = g.createRadialGradient(x - r * 0.13, y + r * 0.18, 0.3, x, y, r * 1.23)
+  silk.addColorStop(0, bright ? '#fff3bc' : '#f3d29a')
+  silk.addColorStop(0.55, crimson ? '#f49b59' : '#ffd18b')
+  silk.addColorStop(1, crimson ? '#9c462f' : '#a57847')
+  g.fillStyle = silk
   g.beginPath()
-  g.ellipse(x, y, r * 0.75, r, 0, 0, 2 * Math.PI)
+  g.moveTo(x - r * 0.48, y - r * 0.94)
+  g.quadraticCurveTo(x - r * 1.02, y - r * 0.35, x - r * 0.77, y + r * 0.45)
+  g.quadraticCurveTo(x - r * 0.72, y + r * 0.73, x - r * 0.43, y + r * 0.88)
+  g.lineTo(x + r * 0.43, y + r * 0.88)
+  g.quadraticCurveTo(x + r * 0.98, y + r * 0.62, x + r * 0.85, y - r * 0.25)
+  g.quadraticCurveTo(x + r * 0.72, y - r * 0.76, x + r * 0.48, y - r * 0.94)
+  g.closePath()
   g.fill()
-  for (const Y of [y - r, y + r]) fill(g, x - r * 0.44, Y - 1, r * 0.88, 2, bright ? '#684119' : '#765537')
+  for (const dx of [-0.42, 0.42])
+    stroke(g, x + r * dx, y - r * 0.77, x + r * dx * 1.15, y + r * 0.75, 0.65, 'rgba(113,75,40,.63)')
+  stroke(g, x - r * 0.58, y - r * 0.91, x + r * 0.58, y - r * 0.91, 1.7, ink)
+  stroke(g, x - r * 0.54, y + r * 0.86, x + r * 0.54, y + r * 0.86, 1.8, ink)
+  if (standing) {
+    stroke(g, x, y + r * 0.9, x, y + r * 1.55, 1.8, ink)
+    stroke(g, x - r * 0.68, y + r * 1.58, x + r * 0.68, y + r * 1.58, 2, ink)
+    stroke(g, x - r * 2.7, y + r * 1.81, x + r * 2.1, y + r * 1.81, 2.2, ink)
+  } else {
+    stroke(g, x, y - r * 3.5, x, y - r * 0.99, 1.45, ink)
+    stroke(g, x, y + r * 0.91, x + r * 0.09, y + r * 1.58, 1.15, ink)
+  }
 }
 function aperture(g, kind, longCurtain, isGlow) {
   const k = kind % 4,
@@ -78,29 +99,23 @@ function aperture(g, kind, longCurtain, isGlow) {
   ring('#302d28')
   g.save()
   g.clip()
-  const warm =
-    kind < 68 || (kind >= 76 && kind < 80)
-      ? isGlow
-        ? k === 1
-          ? '#363628'
-          : '#76502c'
-        : pal[0]
-      : kind >= 84
-        ? isGlow
-          ? '#201b13'
-          : pal[1]
-        : isGlow
-          ? pal[2]
-          : pal[0]
-  const dark = isGlow ? '#040506' : pal[1],
-    lit = g.createRadialGradient(
-      x + w * (0.27 + 0.16 * k),
-      y + h * 0.4,
-      1,
-      x + w * 0.51,
-      y + h * 0.39,
-      w * 0.71
-    )
+  const quiet = kind < 68 || (kind >= 76 && kind < 80),
+    closed = kind >= 84,
+    warm = isGlow
+      ? closed
+        ? ['#7d502e', '#242421', '#744d30', '#2b2924'][k]
+        : quiet
+          ? ['#d6995d', '#645641', '#b4764c', '#dfad77'][k]
+          : ['#ffdca2', '#ffc981', '#ffbf78', '#ffe6b1'][k]
+      : quiet
+        ? pal[0]
+        : closed
+          ? pal[1]
+          : pal[2]
+  const dark = isGlow ? '#090807' : pal[1],
+    cx = x + w * [0.27, 0.73, 0.38, 0.64][k],
+    cy = y + h * [0.34, 0.46, 0.55, 0.4][k],
+    lit = g.createRadialGradient(cx, cy, 1, cx, cy, w * 0.72)
   lit.addColorStop(0, warm)
   lit.addColorStop(
     0.51,
@@ -126,7 +141,7 @@ function aperture(g, kind, longCurtain, isGlow) {
     fill(g, sx, y, sw, h, isGlow ? '#080a08' : '#554b3e')
     for (let j = 2; j < h; j += 8) stroke(g, sx, y + j, sx + sw, y + j, 2, isGlow ? '#10100b' : '#8c7655')
     const lx = left ? x + w * 0.7 : x + w * 0.27
-    lamp(g, lx, y + h * 0.34, 4.2, isGlow)
+    if (kind < 84 || k % 2 === 0) lamp(g, lx, y + h * 0.37, 5.9, isGlow, k % 2 === 1, k === 2)
     fill(g, x, y + h * 0.73, w, h * 0.09, trim)
     fill(g, x + w * 0.18, y + h * 0.75, 3, h * 0.21, trim)
     fill(g, x + w * 0.71, y + h * 0.75, 3, h * 0.21, trim)
@@ -142,14 +157,31 @@ function aperture(g, kind, longCurtain, isGlow) {
       fill(g, x + w * v, y, 2.6, h, trim)
       stroke(g, x + w * v, y + 12, x + w * v + 10, y + 2, 2.4, trim)
     }
-    for (const v of [0.28, 0.74]) lamp(g, x + w * v, y + h * (0.26 + (k % 2) * 0.12), 3.4, isGlow)
+    for (const [j, v] of [0.27, 0.74].entries())
+      lamp(g, x + w * v, y + h * (0.28 + (k % 2) * 0.09), j ? 5.4 : 7.7, isGlow, false, (j + k) % 3 === 1)
     fill(g, x, y + h * 0.76, w, 2.5, trim)
     for (const v of [0.12, 0.38, 0.64, 0.9]) fill(g, x + w * v, y + h * 0.76, 2.1, h * 0.21, trim)
   } else if (kind < 80) {
+    if (kind < 76 || k % 2 === 0) lamp(g, cx, cy, h * 0.16, isGlow, k % 2 === 0, k === 2)
     for (let j = 0; j < 7; j++)
       stroke(g, x + (w * j) / 6, y, x + (w * j) / 6, y + h, j % 3 === 0 ? 3 : 1.8, trim)
     for (let j = 0; j < 3; j++) stroke(g, x, y + (h * (j + 1)) / 4, x + w, y + (h * (j + 1)) / 4, 1.6, trim)
   } else {
+    lamp(g, cx, y + h * 0.61, 7.5, isGlow, true, k === 2)
+    // Open curtains reveal the low cabinet beside the lamp.
+    const shelves = cx > 64 ? x + w * 0.11 : x + w * 0.63
+    for (const at of [0.65, 0.82]) {
+      stroke(g, shelves, y + h * at, shelves + w * 0.22, y + h * at, 2.7, trim)
+      for (let j = 0; j < 3; j++)
+        fill(
+          g,
+          shelves + 2 + j * 5.2,
+          y + h * at - 5 - (j % 2),
+          3.9,
+          5 + (j % 2),
+          isGlow ? '#513523' : '#80644e'
+        )
+    }
     const hatch = isGlow ? '#352015' : '#73553c'
     for (let j = 0; j < 4; j++) stroke(g, x + (w * j) / 3, y, x + (w * j) / 3, y + h, 2.8, hatch)
     for (const v of [0.13, 0.83]) stroke(g, x, y + h * v, x + w, y + h * v, 3, hatch)

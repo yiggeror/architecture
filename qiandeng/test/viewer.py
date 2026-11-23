@@ -42,6 +42,24 @@ PANORAMA_LANDMARKS = {
 # the review build. All camera movement comes from browser input.
 OBSERVER = """window.__THREE_DEVTOOLS__ = new EventTarget();
 window.viewerEmptyResizes = [];
+window.viewerLoading = {art: false, inert: false, values: []};
+const entryObserver = new MutationObserver(() => {
+  const entry = document.getElementById('arrival'), court = document.getElementById('court');
+  if (!entry || !court) return;
+  if (!document.documentElement.dataset.ready) {
+    viewerLoading.art ||= !!entry.querySelector('.arrival-lamp svg') && !!entry.querySelector('#river-print');
+    viewerLoading.inert ||= court.inert && court.getAttribute('aria-busy') === 'true';
+  }
+  const ruler = entry.querySelector('[role=progressbar]');
+  if (ruler?.hasAttribute('aria-valuenow')) {
+    const completed = Number(ruler.getAttribute('aria-valuenow'));
+    if (viewerLoading.values.at(-1) !== completed) viewerLoading.values.push(completed);
+    viewerLoading.total = Number(ruler.getAttribute('aria-valuemax'));
+  }
+  if (document.documentElement.dataset.ready) entryObserver.disconnect();
+});
+entryObserver.observe(document, {subtree:true,childList:true,attributes:true,attributeFilter:['aria-valuenow','data-ready']});
+
 let observedSurface, completedWidth, completedHeight;
 __THREE_DEVTOOLS__.addEventListener('observe', ({detail: scene}) => {
   if (!scene.isScene) return;
@@ -72,9 +90,6 @@ window.viewerPose = () => {
   const c = window.viewerCamera;
   return {eye: c.position.toArray(), gaze: c.getWorldDirection(c.position.clone()).toArray()};
 };
-window.viewerMenu = [];
-for (const type of ['contextmenu', 'selectstart'])
-  document.addEventListener(type, e => viewerMenu.push([type, e.defaultPrevented, e.isTrusted]));
 """
 
 LAYOUT = """() => {
@@ -137,11 +152,35 @@ class Viewer:
         self.fingers = set()
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
         started = monotonic()
-        self.page.goto(url, wait_until="domcontentloaded")
+        if "://" not in url and Path(url).is_file():
+            self.context.set_offline(True)
+            self.page.goto("about:blank")
+            self.page.set_content(Path(url).read_text(encoding="utf-8"), wait_until="domcontentloaded")
+        else:
+            self.page.goto(url, wait_until="domcontentloaded")
+        if pictures and self.page.locator("#arrival").count():
+            self.page.screenshot(path=str(pictures / f"{device}-loading.png"))
         self.page.wait_for_function(
             "document.documentElement.dataset.ready && !!window.viewerCamera", timeout=155000
         )
+        self.page.evaluate("""() => {
+          window.viewerMenu = [];
+          for (const type of ['contextmenu', 'selectstart'])
+            document.addEventListener(type, e => viewerMenu.push([type, e.defaultPrevented, e.isTrusted]));
+        }""")
         self.data = {"load_seconds": round(monotonic() - started, 2), "arrival": self.pose()["eye"]}
+
+    def opening(self):
+        self.page.wait_for_selector("#arrival", state="detached")
+        state = self.page.evaluate("viewerLoading")
+        require(state["art"] and state["inert"], "loading art or input lock missing")
+        values = state["values"]
+        require(len(values) >= 5 and values == sorted(set(values)) and values[-1] == state["total"],
+                f"construction progress incomplete: {state}")
+        require(self.page.locator("#court").get_attribute("aria-busy") == "false", "viewer stayed busy")
+        require(self.page.locator("header a").count() == 0, "unexpected link in city header")
+        require(self.page.locator("html").get_attribute("data-mode") == "night", "opening was not rainy night")
+        self.data["opening"] = state
 
     def pose(self):
         return self.page.evaluate("viewerPose()")
@@ -579,8 +618,6 @@ class Viewer:
         self.page.locator("canvas").focus()
         self.page.keyboard.press("Tab")
         focus = lambda: self.page.evaluate("document.activeElement.textContent.trim()")
-        require(self.page.evaluate("document.activeElement.id") == "character-album", "album link unfocusable")
-        self.page.keyboard.press("Tab")
         require(focus() == "雨夜", "Tab did not reach first mode button")
         self.page.keyboard.press("Tab")
         require(focus() == "白昼", "day button unfocusable")
@@ -625,7 +662,7 @@ class Viewer:
         self.page.wait_for_timeout(180)
         require(self.pose() == stopped, "stuck key after focus returned")
         self.data["keyboard"] = {
-            "tab_order": ["画面", "人物图录", "雨夜", "白昼", "灯河"],
+            "tab_order": ["画面", "雨夜", "白昼", "灯河"],
             "w_m": round(length, 2),
             "blur_drift_m": 0,
         }
@@ -640,6 +677,7 @@ def main():
         "--checks",
         nargs="+",
         choices=[
+            "opening",
             "layout",
             "arrivals",
             "daylight",
@@ -667,7 +705,7 @@ def main():
         )
         for name in DEVICES if args.device == "all" else [args.device]:
             viewer = Viewer(browser, args.url, name, args.screenshots)
-            parts = ["layout", "arrivals", "daylight", "panorama"] + (
+            parts = ["opening", "layout", "arrivals", "daylight", "panorama"] + (
                 ["flight", "two_fingers", "long_press", "orientation"] if viewer.mobile else ["keyboard"]
             )
             print(name, "opened", viewer.data, flush=True)

@@ -18,7 +18,7 @@ const twilightLights = [
   [31.6, 25.75, -101.9, 0xffb368, 37, 15],
   [15.1, 26.0, -105.2, 0xf2c983, 12, 9],
   [4, 39.5, -101.5, 0xf5bd79, 26, 14],
-  [4, 51.9, -101.45, 0xffd390, 52, 16],
+  [4, 51.9, -101.45, 0xffce87, 88, 18],
 ]
 function steadyLamp(b, m, x, y, z, r = 0.46) {
   b.box(m.stone, x, y + 0.2, z, 0.69, 0.4, 0.69)
@@ -232,6 +232,25 @@ function planisphere(b, m, x, y, z, r, side = 0) {
     b.tube(m.bronze, [0, 0, 0.2], [0, 0, 0.36], 0.21, 0.15, 12)
   })
 }
+function armillaryLampFrame(b, m) {
+  // Six curved bronze ribs hold the opal lamp between its oil cup and crown.
+  // The horizontal shaft carries the outer instrument independently of the glass.
+  const centreY = 51.9
+  const profile = [[.49, -1.00], [.89, -.72], [1.19, -.29], [1.25, .13], [1.12, .56], [.69, .95], [.43, 1.04]]
+  for (let rib = 0; rib < 6; rib++) {
+    const angle = (rib + .5) * TAU / 6
+    let previous
+    for (const [r, y] of profile) {
+      const point = [r * Math.cos(angle), centreY + y, r * Math.sin(angle)]
+      if (previous) b.tube(m.bronze, previous, point, .044, .044, 6, .95, false)
+      previous = point
+    }
+  }
+  for (const [y, lower, upper, h] of [[-1.17,.32,.61,.19],[-1.02,.61,.48,.09],[.97,.48,.57,.10],[1.06,.57,.17,.17]]) {
+    b.tube(m.summitGold, [0, centreY + y, 0], [0, centreY + y + h, 0], lower, upper, 20)
+  }
+}
+
 function mainTower(b, m) {
   roundRoom(b, m, {
     x: axisX,
@@ -338,6 +357,7 @@ function mainTower(b, m) {
       b.beam(m.bronze, [sx * 3.43, 44.31, 1.29], [sx * 4.88, 48.53, 0], 0.21, 0.22)
       b.tube(m.summitGold, [sx * 5.24, 51.9, 0], [sx * 5.77, 51.9, 0], 0.34, 0.31, 9)
     }
+    armillaryLampFrame(b, m)
     b.tube(m.patina, [-5.52, 51.9, 0], [5.52, 51.9, 0], 0.085, 0.085, 7)
     ring(b, m.summitGold, [0, 51.9, 0], 5.57, 0.17, 'xy', 64, 1.05)
     ring(b, m.bronze, [0, 51.9, 0], 5.19, 0.087, 'xy', 60)
@@ -613,13 +633,7 @@ export function summitMotion(scene, m, world) {
     jade = m.patina.clone()
   metals.vertexColors = false
   jade.vertexColors = false
-  const sun = new T.MeshStandardMaterial({
-    color: 0xffdf94,
-    emissive: 0xffbb57,
-    emissiveIntensity: 2.1,
-    roughness: 0.27,
-    metalness: 0.13,
-  })
+  const sun = m.summitGlass.clone()
   const moon = new T.MeshStandardMaterial({
     color: 0xdae8dd,
     emissive: 0xb4e3db,
@@ -666,7 +680,9 @@ export function summitMotion(scene, m, world) {
     ecliptic.add(marks)
   }
   bead(plane, 2.89, 0.87, 0.52, moon)
-  const core = bead(root, 0, 0, 1.18, sun)
+  const vessel = [[.43,-1.00],[.82,-.76],[1.12,-.34],[1.18,.08],[1.07,.52],[.80,.80],[.42,1.02]]
+  const core = new T.Mesh(new T.LatheGeometry(vessel.map(([r, y]) => new T.Vector2(r, y)), 36), sun)
+  root.add(core)
   const bezel = torus(root, 1.45, 0.082, metals)
   bezel.rotation.x = 1.13
   const skyAxis = new T.Mesh(new T.CylinderGeometry(0.09, 0.12, 9.31, 8), metals)
@@ -678,7 +694,7 @@ export function summitMotion(scene, m, world) {
       ecliptic.rotation.set(0.64, t * 0.17 - 0.66, 0.89)
       plane.rotation.set(1.07, t * 0.23 + 0.42, -0.32)
       core.rotation.y = t * 0.24
-      sun.emissiveIntensity = day ? 0.27 : 2.18
+      sun.emissiveIntensity = day ? 0.27 : 2.85
       moon.emissiveIntensity = day ? 0.14 : 0.93
       metals.emissiveIntensity = day ? 0.1 : 0.4
     },

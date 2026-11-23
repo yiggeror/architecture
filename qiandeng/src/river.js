@@ -1,5 +1,6 @@
 import * as T from 'three'
-import { layeredView } from './layers.js'
+import { layeredView, sceneSamples, sceneColor } from './layers.js'
+import { reflectionWindow } from './reflectionWindow.js'
 
 const vertex = `
 uniform mat4 textureMatrix;
@@ -52,6 +53,7 @@ void main(){
  for(int i=0;i<10;i++){
    vec3 off=movePlace[i].xyz-wp;float d2=dot(off,off);
    float fall=max(0.,1.-d2*movePlace[i].w*.36);
+   if(fall==0.)continue;
    float glint=pow(max(0.,dot(n,normalize(v+normalize(off)))),28.);
    col+=moveHue[i].rgb*fall*fall*(.045+2.8*glint)/(2.+d2)*(1.-.96*day);
  }
@@ -66,6 +68,60 @@ void main(){
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
 }`
+// The garden and downstream ribbons have explicit receiving patches. Wet
+// masonry also samples the main mirror. Find its world footprint from the
+// original geometry before the render-only district meshes are assembled.
+function wetPaving(statics, water) {
+  const tiles = new Map(), cell = 22
+  const box = new T.Box3(), p = new T.Vector3()
+  const xs = new Float64Array(3), ys = new Float64Array(3), zs = new Float64Array(3)
+  const lower = -.13, upper = 3.23
+  // Floating fittings and performers move along the canal with the boats.
+  const bounds = new T.Box3().setFromObject(water).expandByScalar(5)
+  const patches = [bounds]
+  statics.traverse(o => {
+    const g = o.geometry, m = o.material
+    if (!o.isMesh || o.isInstancedMesh || !m?.isMeshStandardMaterial || m.userData.collisionOnly ||
+        m.roughness >= .84 || !g.attributes.position || !g.index) return
+    if (!g.boundingBox) g.computeBoundingBox()
+    box.copy(g.boundingBox).applyMatrix4(o.matrixWorld)
+    if (box.min.y > upper || box.max.y < lower) return
+    const ix = g.index.array, positions = g.attributes.position
+    for (let i = 0; i < ix.length; i += 3) {
+      for (let j = 0; j < 3; j++) {
+        p.fromBufferAttribute(positions, ix[i + j]).applyMatrix4(o.matrixWorld)
+        xs[j] = p.x; ys[j] = p.y; zs[j] = p.z
+      }
+      if (Math.min(ys[0], ys[1], ys[2]) > upper || Math.max(ys[0], ys[1], ys[2]) < lower) continue
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+      for (let j = 0; j < 3; j++) {
+        const k = (j + 1) % 3, y = ys[j], dy = ys[k] - y
+        let a = 0, b = 1
+        if (dy) {
+          const f = (lower - y) / dy, t = (upper - y) / dy
+          a = Math.max(0, Math.min(f, t)); b = Math.min(1, Math.max(f, t))
+          if (a > b) continue
+        } else if (y < lower || y > upper) continue
+        const dx = xs[k] - xs[j], dz = zs[k] - zs[j]
+        const ax = xs[j] + dx * a, az = zs[j] + dz * a
+        const bx = xs[j] + dx * b, bz = zs[j] + dz * b
+        x0 = Math.min(x0, ax, bx); x1 = Math.max(x1, ax, bx)
+        z0 = Math.min(z0, az, bz); z1 = Math.max(z1, az, bz)
+      }
+      for (let col = Math.floor(x0 / cell); col <= Math.floor(x1 / cell); col++) {
+        for (let row = Math.floor(z0 / cell); row <= Math.floor(z1 / cell); row++) {
+          const key = col * 65536 + row
+          if (!tiles.has(key)) tiles.set(key, new T.Box3())
+          const tile = tiles.get(key)
+          tile.expandByPoint(p.set(Math.max(col * cell, x0), lower, Math.max(row * cell, z0)))
+          tile.expandByPoint(p.set(Math.min((col + 1) * cell, x1), upper, Math.min((row + 1) * cell, z1)))
+        }
+      }
+    }
+  })
+  return patches.concat([...tiles.values()])
+}
+
 export function river(scene, statics, renderer, common, software, config = {}) {
   const small = Boolean(config.small),
     wide = Boolean(config.wide),
@@ -75,15 +131,17 @@ export function river(scene, statics, renderer, common, software, config = {}) {
   const width = wide ? (software ? 340 : 660) : small ? (software ? 252 : 420) : software ? 400 : 784,
     height = wide ? (software ? 214 : 438) : small ? (software ? 183 : 300) : software ? 265 : 510
   const target = new T.WebGLRenderTarget(width, height, {
-    type: T.HalfFloatType,
+    ...sceneColor(renderer),
     minFilter: T.LinearFilter,
     magFilter: T.LinearFilter,
     generateMipmaps: false,
+    samples: software ? 0 : sceneSamples(renderer),
+    resolveDepthBuffer: false,
   })
-  target.depthTexture = new T.DepthTexture(width, height, T.UnsignedIntType)
+  const window = reflectionWindow(target, level, primary)
   const matrix = new T.Matrix4(),
     camera = new T.PerspectiveCamera(),
-    plate = layeredView(renderer, scene, statics)
+    plate = layeredView(renderer, scene, statics, software)
   const material = new T.ShaderMaterial({
     name: '潮汐',
     defines: wide ? { ESTUARY: 1 } : {},
@@ -111,8 +169,10 @@ export function river(scene, statics, renderer, common, software, config = {}) {
   const frustum = new T.Frustum(),
     projection = new T.Matrix4()
   const boxes = config.patches || [new T.Box3().setFromObject(water)]
+  const receivers = primary ? wetPaving(statics, water) : boxes
   const lastEye = new T.Vector3(1e8, 0, 0),
     lastQ = new T.Quaternion(),
+    lastProjection = new T.Matrix4(),
     look = new T.Vector3(),
     up = new T.Vector3()
   const floor = new T.Plane(new T.Vector3(0, 1, 0), -level),
@@ -121,8 +181,7 @@ export function river(scene, statics, renderer, common, software, config = {}) {
     opposite = new T.Vector4()
   const dummy = common.mirrorMap.value
   let stamp = -1e9,
-    force = true,
-    lastAspect = 0
+    force = true
   function reflect(cam, now) {
     if (
       cam.position.y <= level + 0.015 ||
@@ -141,46 +200,59 @@ export function river(scene, statics, renderer, common, software, config = {}) {
       )
       if (!water.visible) return
     }
-    const moved =
-      lastEye.distanceToSquared(cam.position) > 0.00004 ||
-      lastQ.angleTo(cam.quaternion) > 0.0006 ||
-      cam.aspect !== lastAspect
-    if (!force && !moved && now - stamp < (wide ? 700 : software ? 135 : 55)) return
+    // Anchor the map until eye translation or rotation can move a reflected
+    // point by half a target texel, including at the diagonal of the lens.
+    // At an elevated viewpoint this avoids repainting the whole distant city
+    // for centimetres of drift. The moving pass retains its own refresh clock.
+    const lens = cam.projectionMatrix.elements
+    const focal = Math.max(width * Math.abs(lens[0]), height * Math.abs(lens[5])) * .5
+    const edge = 1 + 1 / (lens[0] * lens[0]) + 1 / (lens[5] * lens[5])
+    const distance = Math.max(.015, Math.abs(cam.position.y - level))
+    const imageTravel = (2 * lastEye.distanceTo(cam.position) / distance + lastQ.angleTo(cam.quaternion)) * focal * edge
+    const moved = force || !lastProjection.equals(cam.projectionMatrix) || imageTravel > .5
+    if (!moved && Math.abs(now - stamp) < (wide ? 700 : software ? 135 : 55)) return
+    if (moved) {
+      camera.position.copy(cam.position)
+      camera.position.y = 2 * level - cam.position.y
+      cam.getWorldDirection(look)
+      look.y *= -1
+      up.set(0, 1, 0).applyQuaternion(cam.quaternion)
+      up.y *= -1
+      camera.up.copy(up)
+      camera.lookAt(look.add(camera.position))
+      camera.far = cam.far
+      camera.updateMatrixWorld()
+      camera.projectionMatrix.copy(cam.projectionMatrix)
+      if (!window.measure(camera, receivers, frustum, cam.userData.hiddenReceiver)) {
+        force = true
+        return
+      }
+      lastEye.copy(cam.position)
+      lastQ.copy(cam.quaternion)
+      lastProjection.copy(cam.projectionMatrix)
+      matrix
+        .set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+        .multiply(camera.projectionMatrix)
+        .multiply(camera.matrixWorldInverse)
+        .multiply(water.matrixWorld)
+      plane.copy(floor).applyMatrix4(camera.matrixWorldInverse)
+      clip.set(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant)
+      const e = camera.projectionMatrix.elements
+      opposite.set(
+        (Math.sign(clip.x) + e[8]) / e[0],
+        (Math.sign(clip.y) + e[9]) / e[5],
+        -1,
+        (1 + e[10]) / e[14]
+      )
+      clip.multiplyScalar(2 / clip.dot(opposite))
+      e[2] = clip.x
+      e[6] = clip.y
+      e[10] = clip.z + 1 - 0.00025
+      e[14] = clip.w
+      camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert()
+      window.clip(camera)
+    }
     stamp = now
-    lastEye.copy(cam.position)
-    lastQ.copy(cam.quaternion)
-    lastAspect = cam.aspect
-    camera.position.copy(cam.position)
-    camera.position.y = 2 * level - cam.position.y
-    cam.getWorldDirection(look)
-    look.y *= -1
-    up.set(0, 1, 0).applyQuaternion(cam.quaternion)
-    up.y *= -1
-    camera.up.copy(up)
-    camera.lookAt(look.add(camera.position))
-    camera.far = cam.far
-    camera.updateMatrixWorld()
-    camera.projectionMatrix.copy(cam.projectionMatrix)
-    matrix
-      .set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
-      .multiply(camera.projectionMatrix)
-      .multiply(camera.matrixWorldInverse)
-      .multiply(water.matrixWorld)
-    plane.copy(floor).applyMatrix4(camera.matrixWorldInverse)
-    clip.set(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant)
-    const e = camera.projectionMatrix.elements
-    opposite.set(
-      (Math.sign(clip.x) + e[8]) / e[0],
-      (Math.sign(clip.y) + e[9]) / e[5],
-      -1,
-      (1 + e[10]) / e[14]
-    )
-    clip.multiplyScalar(2 / clip.dot(opposite))
-    e[2] = clip.x
-    e[6] = clip.y
-    e[10] = clip.z + 1 - 0.00025
-    e[14] = clip.w
-    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert()
     const previous = renderer.getRenderTarget()
     const original = common.mirrorMap.value,
       wasValid = common.waterValid.value

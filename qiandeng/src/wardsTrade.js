@@ -1,4 +1,5 @@
 import { art, artPolygon, picture, bannerSlot } from './wardsPaint.js'
+import { oilStand } from './wardOilLamps.js'
 import { houseDimensions } from './wardsFrame.js'
 const S = [-1, 1],
   tau = Math.PI * 2,
@@ -10,7 +11,7 @@ export function glow(world, b, x, y, z, color, power, range) {
 }
 export function lamp(b, m, x, y, z, r = 0.26, h = 0.64, id = 1, ornate = false) {
   const k = id % 3,
-    n = ornate ? 10 : k === 0 ? 8 : 6,
+    n = ornate ? 8 : k === 2 ? 4 : 6,
     shape =
       k === 0
         ? [
@@ -33,6 +34,7 @@ export function lamp(b, m, x, y, z, r = 0.26, h = 0.64, id = 1, ornate = false) 
               [0.96, 0.17],
               [0.56, 0.45],
             ]
+  if (k === 0 && !ornate) shape.splice(3, 1)
   const p = (a, rr, hh) => [x + Math.cos(a) * r * rr, y + h * hh, z + Math.sin(a) * r * rr]
   for (let j = 0; j < n; j++) {
     const a = (tau * j) / n,
@@ -46,10 +48,10 @@ export function lamp(b, m, x, y, z, r = 0.26, h = 0.64, id = 1, ornate = false) 
         24 + k,
         [p(a, rr, u), p(a, rr2, v), p(an, rr2, v), p(an, rr, u)],
         [
-          [j / n, 0.5 + u],
-          [j / n, 0.5 + v],
-          [(j + 1) / n, 0.5 + v],
-          [(j + 1) / n, 0.5 + u],
+          [0, 0.5 + u],
+          [0, 0.5 + v],
+          [1, 0.5 + v],
+          [1, 0.5 + u],
         ],
         j % 3 === 0 ? 0.89 : 1
       )
@@ -66,40 +68,67 @@ export function lamp(b, m, x, y, z, r = 0.26, h = 0.64, id = 1, ornate = false) 
         )
     }
   }
-  for (const [rr, hh] of [shape[0], shape.at(-1)])
-    b.tube(
-      m.darkwood,
-      [x, y + h * hh - 0.024, z],
-      [x, y + h * hh + 0.024, z],
-      r * rr + 0.014,
-      r * rr + 0.014,
-      n,
-      1,
-      false
+  const [toe, bottom] = shape[0],
+    [neck, top] = shape.at(-1)
+  // The spun cap returns over the silk seam. Its pierced underskirt hides the
+  // lamp bowl from above, while the knot and two tails hang clear of the wick.
+  for (let j = 0; j < n; j++) {
+    const a = (tau * j) / n,
+      c = (tau * (j + 1)) / n
+    b.face(
+      m.bronze,
+      [
+        p(a, neck + 0.1, top),
+        p(a, neck * 0.43, top + 0.088),
+        p(c, neck * 0.43, top + 0.088),
+        p(c, neck + 0.1, top),
+      ],
+      brass
     )
-  b.tube(m.bronze, [x, y - h * 0.57, z], [x, y - h * 0.48, z], r * 0.15, r * 0.13, 6, 1, false)
-  b.tube(
-    m.vermilion,
-    [x, y - h * (ornate ? 0.84 : 0.72), z],
-    [x, y - h * 0.56, z],
-    r * 0.11,
-    r * 0.069,
-    5,
-    1,
-    false
-  )
-  if (ornate)
-    for (const t of [0, 0.5, 1]) {
-      const off = (t - 0.5) * r * 0.18
-      b.beam(m.wine, [x + off, y - h * 0.7, z], [x + off * 1.46, y - h * 0.91, z + 0.017], 0.017, 0.014)
-    }
+    b.face(
+      m.darkwood,
+      [
+        p(a, toe * 0.51, bottom - 0.077),
+        p(a, toe + 0.065, bottom + 0.005),
+        p(c, toe + 0.065, bottom + 0.005),
+        p(c, toe * 0.51, bottom - 0.077),
+      ],
+      0.9
+    )
+  }
+  const knot = y + h * (bottom - 0.066)
+  for (const side of S)
+    b.face(m.vermilion, [
+      [x - 0.042 * r, knot, z + side * 0.025],
+      [x + 0.08 * r, knot, z + side * 0.013],
+      [x + side * r * 0.15, y - h * (ornate ? 0.88 : 0.76), z + side * 0.032],
+      [x + side * r * 0.15 - 0.11 * r, y - h * (ornate ? 0.91 : 0.79), z + side * 0.044],
+    ])
 }
+
 function hangingLamp(b, m, x, top, z, r, h, id, cord = 0.24, ornate = false) {
   b.face(m.rope, [
     [x - 0.012, top, z],
     [x + 0.012, top, z],
-    [x + 0.012, top - cord, z],
-    [x - 0.012, top - cord, z],
+    [x + 0.012, top - cord + h * 0.06, z],
+    [x - 0.012, top - cord + h * 0.06, z],
+  ])
+  const back = z - 0.39,
+    tip = z + 0.035
+  for (const side of S) {
+    const X = x + side * 0.038
+    b.face(m.wood, [
+      [X, top - 0.099, back],
+      [X, top - 0.012, back],
+      [X, top + 0.056, tip],
+      [X, top + 0.006, tip],
+    ])
+  }
+  b.face(m.darkwood, [
+    [x - 0.038, top - 0.099, back],
+    [x + 0.038, top - 0.099, back],
+    [x + 0.038, top + 0.006, tip],
+    [x - 0.038, top + 0.006, tip],
   ])
   lamp(b, m, x, top - cord - h * 0.48, z, r, h, id, ornate)
 }
@@ -501,7 +530,8 @@ export function furnishings(b, m, h, world) {
   if (h.outbuilding) {
     stock(b, m, h, d.w * 0.14, ground, -d.d * 0.26, d.w * 0.55, 0.61)
     picture(b, m.wardPaint, art.slats, -d.w * 0.28, 1.73, -d.d / 2 + 0.1, 0.67, 0.91)
-    glow(world, b, d.w * 0.12, 2.26, 0.13, 0xffae72, 6.8, 5.9)
+    oilStand(b, m, d.w * 0.12, ground + 0.855, -d.d * 0.26, 0.88)
+    glow(world, b, d.w * 0.12, ground + 1.22, -d.d * 0.26 + 0.022, 0xffa961, 10.5, 6.6)
     return
   }
   const dress = h.row === 0 || [24, 37, 47].includes(h.id)
@@ -553,10 +583,36 @@ export function furnishings(b, m, h, world) {
         0.22
       )
   }
-  if (h.row === 0) {
-    glow(world, b, d.w * 0.24, head - 0.88, front + 0.38, 0xffa05a, 27, 11.8)
-    glow(world, b, -d.w * 0.24, 2.05, -0.41, h.phase % 2 ? 0xffb66e : 0xffa166, 18, 8.5)
-    if (h.levels > 1) glow(world, b, -d.w * 0.22, head + d.uH - 0.86, front + 0.05, 0xffb56b, 17.5, 9.1)
-  } else
-    glow(world, b, d.w * 0.19, head - 0.9, front + 0.13, h.phase % 3 === 0 ? 0xff9472 : 0xffba74, 16, 7.9)
+  // Connect each sampled pool to the shade or burner that produces it.
+  // Along the old quay a warm table is visible through the open porch bays.
+  if (h.quay || h.form === 'terrace' || h.form === 'court') {
+    const at = h.quay ? (h.levels === 3 ? 0.28 : 0.32) : 0.24
+    const red = (h.phase + (h.quay ? (h.levels === 3 ? 2 : 1) : 0)) % 3 === 0
+    glow(
+      world,
+      b,
+      d.w * at,
+      head - 0.73,
+      front + 0.22,
+      red ? 0xff9553 : 0xffc07a,
+      h.quay ? 19 : 15,
+      h.quay ? 9.4 : 7.2
+    )
+    if (h.quay && h.levels > 1)
+      glow(world, b, -d.upperW * 0.33, head + d.uH - 0.815, d.upperD / 2 + 0.13, 0xffb469, 15, 7.9)
+  } else {
+    const x = -d.w * 0.33,
+      z = front + 0.27
+    hangingLamp(b, m, x, head - 0.18, z, 0.255, 0.64, (h.id + 1) % 3, 0.2, h.phase % 3 === 0)
+    glow(world, b, x, head - 0.69, z, h.phase % 2 ? 0xffb569 : 0xff9a58, 20, 8.4)
+  }
+  if (h.quay || (h.row && h.id % 3 === 1)) {
+    const x = -d.w * 0.5 + 0.54,
+      z = -d.d * 0.12,
+      y = 1.28
+    b.box(m.darkwood, x - 0.26, y - 0.056, z, 0.67, 0.112, 0.39)
+    b.beam(m.bronze, [x - 0.51, y - 0.42, z], [x - 0.08, y - 0.068, z], 0.057, 0.062)
+    oilStand(b, m, x - 0.02, y, z, 1.11)
+    glow(world, b, x - 0.026, y + 0.46, z + 0.027, h.phase % 3 ? 0xffa457 : 0xffce84, h.quay ? 23 : 17, 7.7)
+  }
 }

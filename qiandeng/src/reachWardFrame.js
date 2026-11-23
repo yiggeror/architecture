@@ -184,7 +184,8 @@ function room(h, floor, side, bay, n, seed) {
   }
   if (night === 'home') {
     if (floor === principal && bay === h.phase % n) return h.phase % 2 ? k + 1 : 80 + k
-    if (floor === principal && h.phase % 3 === 1 && Math.abs(bay - (h.phase % n)) === 1) return 72 + k
+    if (floor === principal && h.phase % 3 !== 2 && Math.abs(bay - (h.phase % n)) === 1)
+      return h.phase % 2 ? 72 + k : 80 + k
     if (!floor && seed % 3 === 0) return 76 + k
     return [64 + k, h.style.wall, 84 + k, 72 + k, 8 + k, 34][seed % 6]
   }
@@ -208,7 +209,8 @@ function recessed(b, m, h, slot, x, y, w, H, seed, glazed) {
     winH = H - sill - head,
     depth = glazed ? 0.44 : 0.23
   const outer = m.reachFrame,
-    wall = h.style.wall
+    wall = h.style.wall,
+    illuminated = slot < 8 || (slot >= 68 && slot < 76) || (slot >= 80 && slot < 84)
   panel(b, outer, wall, x, y, 0, w, sill, 0.88)
   panel(b, outer, wall, x, y + H - head, 0, w, head, 0.83)
   for (const s of sign) {
@@ -217,7 +219,7 @@ function recessed(b, m, h, slot, x, y, w, H, seed, glazed) {
     reachFace(
       b,
       outer,
-      24,
+      illuminated ? (s === (seed % 2 ? -1 : 1) ? 112 : 113) : 24,
       [
         [X, y + sill, 0],
         [X, y + sill, -depth],
@@ -230,7 +232,7 @@ function recessed(b, m, h, slot, x, y, w, H, seed, glazed) {
   reachFace(
     b,
     outer,
-    27,
+    illuminated ? 114 : 27,
     [
       [x - win / 2, y + sill, 0],
       [x + win / 2, y + sill, 0],
@@ -239,7 +241,17 @@ function recessed(b, m, h, slot, x, y, w, H, seed, glazed) {
     ],
     0.81
   )
-  panel(b, outer, slot, x, y + sill, -depth, win, winH, 0.85 + (seed % 5) * 0.043)
+  panel(
+    b,
+    illuminated ? m.reachPaper : outer,
+    slot,
+    x,
+    y + sill,
+    -depth,
+    win,
+    winH,
+    0.85 + (seed % 5) * 0.043
+  )
   if (glazed) {
     const f = 0.6 * win,
       xx = x + ((seed % 2 ? 1 : -1) * (win - f)) / 2,
@@ -276,7 +288,7 @@ function elevation(b, m, h, w, height, y, side, floor, open) {
     else
       panel(
         b,
-        m.reachFrame,
+        slot < 8 || (slot >= 68 && slot < 76) || (slot >= 80 && slot < 84) ? m.reachPaper : m.reachFrame,
         slot,
         x,
         y,
@@ -292,8 +304,7 @@ function wallJoinery(b, m, h, span, level, height, floor) {
   if (floor) panel(b, m.reachDetail, h.style.wood, 0, level - 0.05, 0.014, span, 0.13, 0.74)
   const wood = h.style.wood,
     t = 0.105 + (h.sig ? 0.035 : 0)
-  for (const end of sign)
-    panel(b, m.reachDetail, wood, (end * (span - t)) / 2, level, 0.015, t, height, 0.84)
+  for (const end of sign) panel(b, m.reachDetail, wood, (end * (span - t)) / 2, level, 0.015, t, height, 0.84)
 }
 function gallery(b, m, h, w, y, bodyD, outerD, open) {
   const mat = m.reachFrame,
@@ -457,8 +468,7 @@ export function frameHouse(b, m, h) {
     })
     for (const side of sign)
       b.at((side * w) / 2, 0, mid, (side * Math.PI) / 2, () => {
-        if (floor === 1 && h.bridge?.side === side)
-          sideDoor(b, m, h, deep, H, y, -side * (h.bridge.z - mid))
+        if (floor === 1 && h.bridge?.side === side) sideDoor(b, m, h, deep, H, y, -side * (h.bridge.z - mid))
         else elevation(b, m, h, deep, H, y, 'side', floor, false)
         wallJoinery(b, m, h, deep, y, H, floor)
       })
@@ -490,8 +500,7 @@ export function frameHouse(b, m, h) {
     rise = Math.max(1.45, Math.min(3.35, Math.min(rw, rd) * (0.23 + (h.phase % 3) * 0.026))),
     lift = 0.36 + (h.phase % 4) * 0.13 + (h.sig ? 0.26 : 0)
   const hip = ['gable', 'firewall', 'return'].includes(h.kind) ? 0.055 : h.kind === 'lantern' ? 0.65 : 0.39
-  if (h.kind === 'return')
-    b.at(0, 0, 0, Math.PI / 2, () => roof(b, m, rd, rw, y - 0.06, rise, hip, lift, s))
+  if (h.kind === 'return') b.at(0, 0, 0, Math.PI / 2, () => roof(b, m, rd, rw, y - 0.06, rise, hip, lift, s))
   else roof(b, m, rw, rd, y - 0.06, rise, hip, lift, s)
   if (h.kind === 'firewall') partyWall(b, m, h, rw, rd, y - 0.19)
   return y + rise

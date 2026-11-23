@@ -543,7 +543,7 @@ function movingVeil() {
   return texture
 }
 
-export function firmament(scene) {
+export function firmament(scene, initialDay) {
   const shader = new T.ShaderMaterial({
     uniforms: {
       atlas: { value: null },
@@ -651,6 +651,8 @@ export function firmament(scene) {
   scene.add(sky)
   const maps = []
   const finalWidth = 1408
+  let previewsReady
+  const ready = new Promise((resolve) => { previewsReady = resolve })
   let paint,
     active = 0,
     painterWorker
@@ -664,6 +666,7 @@ export function firmament(scene) {
       scene.dispatchEvent({ type: 'sky-painted' })
     }
     old?.dispose()
+    if (maps[0] && maps[1]) previewsReady()
   }
   // While the garden is coming into view, trace two finer panoramas away from
   // the input/render thread. Switching modes reuses the finished textures.
@@ -687,12 +690,14 @@ export function firmament(scene) {
         accept(day, pixels, width)
         if (maps[0]?.image.width === finalWidth && maps[1]?.image.width === finalWidth) {
           painterWorker.terminate()
+          painterWorker = null
           paint = null
         }
       }
       painterWorker.onerror = () => {
         painterWorker.terminate()
         painterWorker = null
+        previewsReady()
         // A restricted document can decline blob workers after construction.
         // Finish the currently visible sky there as well.
         const day = Boolean(active)
@@ -702,15 +707,15 @@ export function firmament(scene) {
           accept(day, paint(day, finalWidth, finalWidth / 2), finalWidth)
         }, 0)
       }
-      painterWorker.postMessage({ day: true, width: 448 })
-      painterWorker.postMessage({ day: false, width: finalWidth })
-      painterWorker.postMessage({ day: true, width: finalWidth })
+      for (const width of [512, finalWidth])
+        for (const day of [initialDay, !initialDay]) painterWorker.postMessage({ day, width })
     } catch {
       painterWorker = null
     } finally {
       URL.revokeObjectURL(url)
     }
   }
+  if (!painterWorker) previewsReady()
   function mode(day) {
     active = Number(day)
     if (!maps[active] || (!painterWorker && maps[active].image.width < finalWidth)) {
@@ -734,5 +739,5 @@ export function firmament(scene) {
       direction.normalize()
     }
   }
-  return { mode, update }
+  return { mode, update, ready }
 }

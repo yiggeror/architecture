@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as T from 'three'
 import { locate, traffic } from '../src/fleetRoute.js'
+import { buildVessel } from '../src/fleetBoats.js'
 import { Mason } from '../src/mesh.js'
 import { materials } from '../src/kit.js'
 import { reachLand } from '../src/reachLand.js'
@@ -137,8 +138,11 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
   const scene = new T.Scene(),
     camera = new T.PerspectiveCamera(),
     station = stations[0]
+  camera.userData.portraitLens = station.portraitLens
+  const finishes = materials()
   const ships = traffic.map((spec, i) => {
-    const group = new T.Group(),
+    const vessel = spec.kind === 'covered' ? buildVessel(new T.Group(), finishes, spec) : { group: new T.Group() },
+      { group } = vessel,
       route = locate(spec, 0, {}),
       rock = 0.65 + spec.beam * 0.14
     group.position.set(route.x, 0.025 * Math.sin(i) + 0.012 * Math.sin(0.35 * i), route.z)
@@ -149,7 +153,7 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
       'YXZ'
     )
     group.updateMatrixWorld()
-    return { spec, group }
+    return { spec, ...vessel }
   })
   const people = riverPeople(scene, {}, ships)
   const triangles = () => {
@@ -174,6 +178,17 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
     assert.ok(batch('headLow').count > 0 && batch('lightFar').count > 0)
   }
 
+  const ferry = ships[6].group
+  const matrix = new T.Matrix4(), face = batch('faceFar'), tint = new T.Color()
+  let seatedPassenger = false
+  for (let i = 0; i < face.count; i++) {
+    face.getMatrixAt(i, matrix)
+    const p = ferry.worldToLocal(new T.Vector3().setFromMatrixPosition(matrix))
+    if (Math.abs(p.x) > 0.13 || Math.abs(p.z - 0.12) > 0.14 || p.y < 1.35) continue
+    face.getColorAt(i, tint)
+    seatedPassenger = tint.r > tint.g && tint.g > tint.b && tint.b > 0.4
+  }
+  assert.ok(seatedPassenger, 'the passenger beneath the blue hood retains the colored instanced face')
   const original = triangles()
   camera.userData.viewportHeight = 200
   people(0, false, camera)
@@ -199,6 +214,20 @@ test('the opening fits the passenger budget and the smallest lamps still walk al
   camera.lookAt(0, 260, 44)
   people(2, false, camera)
   assert.equal(triangles(), 0)
+
+  const local = (x, y, z) => ferry.localToWorld(new T.Vector3(x, y, z))
+  const passenger = () => scene.children.some((o) => o.userData.personId === 21 && o.visible)
+  const head = local(0, 1.54, 0.12)
+  camera.userData.viewportHeight = 700
+  camera.position.copy(local(2.6, 1.28, 0.12))
+  camera.lookAt(head)
+  people(3, false, camera)
+  assert.ok(passenger(), 'the open side of the ferry reveals the articulated passenger')
+  camera.position.copy(local(2.6, 0.24, 0.12))
+  camera.lookAt(head.x, -head.y, head.z)
+  camera.updateMatrixWorld()
+  people(4, false, camera)
+  assert.ok(head.clone().project(camera).y > 1 && passenger(), 'the river can reveal the passenger in the mirror')
 })
 
 test('the public paving and embankment walls clear the people and parasols at every street level', () => {

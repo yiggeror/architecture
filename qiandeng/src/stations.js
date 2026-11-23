@@ -6,19 +6,24 @@ import { rooflineSites } from './reachRooflineSites.js'
 export const stations = [
   {
     label: '灯河',
-    eye: [9, 11.8, 61],
-    target: [-4, 23.8, -59],
-    portraitEye: [-19, 19.2, 67],
-    portraitTarget: [20, 28.8, -132],
+    eye: [-2.7, 3.95, 60.7],
+    target: [-0.4, 10.94, -4.65],
+    portraitEye: [-3.16, 3.85, 60.28],
+    portraitTarget: [-0.45, 10.89, -4.65],
+    portraitLens: { halfWidth: 0.30, minFov: 62.2, maxFov: 76 },
   },
   { label: '水关', eye: [-2.65, 3.85, 8.85], target: [1.5, 9.22, -21] },
   { label: '灯市', eye: [117.1, 10.82, 37], target: [119.9, 11.75, 20.8] },
   { label: '云阙', eye: [-67, 91, -149], target: [-103, 94, -201] },
   { label: '全城', panorama: true, eye: [-174, 209, 300], target: [79, 73, -164] },
 ]
+const defaultPortraitLens = { halfWidth: 0.348, minFov: 64, maxFov: 77 }
 export function updateLens(camera, w, h) {
   camera.aspect = w / h
-  camera.fov = w < h ? Math.min(77, Math.max(64, (2 * Math.atan(0.348 / camera.aspect) * 180) / Math.PI)) : 56
+  const { halfWidth, minFov, maxFov } = camera.userData.portraitLens ?? defaultPortraitLens
+  camera.fov = w < h
+    ? T.MathUtils.clamp(T.MathUtils.radToDeg(2 * Math.atan(halfWidth / camera.aspect)), minFov, maxFov)
+    : 56
   camera.updateProjectionMatrix()
 }
 

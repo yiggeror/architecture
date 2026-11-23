@@ -92,7 +92,7 @@ export function districtAir(lights) {
             dy = (y0 + j * step - y - 1.6) * 1.45
           const r2 = (dx * dx + dy * dy + dz * dz) / (r * r)
           if (r2 < 2.9)
-            accum[(k * h + j) * w + i] += (Math.exp(-r2 * 1.4) - 0.016) * Math.min(1.55, l.power / 39)
+            accum[(k * h + j) * w + i] += (Math.exp(-r2 * 1.4) - 0.016) * Math.min(1.55, l.power / 39) * (l.air ?? 1)
         }
   }
   const density = Uint8Array.from(accum, (v) => Math.round(255 * (1 - Math.exp(-v * 0.43))))

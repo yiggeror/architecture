@@ -1,5 +1,5 @@
 import * as T from 'three'
-import { stations, framePanorama } from './stations.js'
+import { stations, framePanorama, updateLens } from './stations.js'
 
 const clamp = T.MathUtils.clamp
 const pitchLimit = Math.PI / 2 - 0.005
@@ -128,6 +128,8 @@ export function navigation(canvas, camera, world) {
   }
 
   function placeStation(station) {
+    camera.userData.portraitLens = station.portraitLens
+    updateLens(camera, camera.aspect, 1)
     const narrow = camera.aspect < 0.81
     const eye = (narrow && station.portraitEye) || station.eye,
       target = (narrow && station.portraitTarget) || station.target
@@ -148,8 +150,9 @@ export function navigation(canvas, camera, world) {
     select(i)
   }
 
+  const court = document.getElementById('court')
   addEventListener('keydown', (e) => {
-    if (!controls.has(e.code) || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return
+    if (court.inert || !controls.has(e.code) || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return
     // Let Shift+Tab and other native focus shortcuts work normally.
     if (e.code !== 'ShiftLeft' && e.code !== 'ShiftRight') e.preventDefault()
     if (!e.repeat && !held.has(e.code)) {
@@ -169,7 +172,6 @@ export function navigation(canvas, camera, world) {
     if (document.hidden) stopInputs()
   })
 
-  const court = document.getElementById('court')
   court.addEventListener('contextmenu', (e) => e.preventDefault())
   court.addEventListener('selectstart', (e) => e.preventDefault())
   canvas.setAttribute('role', 'application')

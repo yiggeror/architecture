@@ -1,7 +1,19 @@
 import * as T from 'three'
-import { roof, windowBay } from './kit.js'
+import { roof } from './kit.js'
+import {
+  bridgeBeacons,
+  keystoneLamp,
+  vaultLamps,
+  cageLamp,
+  keeperDesk,
+  screenWick,
+  screenedBay,
+  silkLantern,
+  silkScreen,
+} from './gateLamps.js'
+import { gatePalette } from './gateSilk.js'
 import { DECK, stoneBridge } from './gateStone.js'
-import { gateFinish, raisedFret, sign, smallShade, streamer, tideDesk, tideDrum } from './gateCraft.js'
+import { gateFinish, raisedFret, sign, streamer, tideDrum } from './gateCraft.js'
 
 const MID = 16.32,
   HIGH = 21.0,
@@ -66,7 +78,7 @@ function frieze(b, m, x0, x1, y, z, small = false) {
 
 // A pierced paper fan is mounted between two posts. A real aperture above its
 // shoulder admits views of blue evening through the gallery behind it.
-function fanWindow(b, m, x, y, z, w, h) {
+function fanWindow(b, m, x, y, z, w, h, flip, glow) {
   const points = [
     [x - w / 2, y, z],
     [x + w / 2, y, z],
@@ -77,14 +89,10 @@ function fanWindow(b, m, x, y, z, w, h) {
     const a = (Math.PI * j) / n
     points.push([x + w * 0.5 * Math.cos(a), axis + h * 0.72 * Math.sin(a), z])
   }
-  b.face(
-    m.paper,
-    points,
-    1,
-    points.map((p) => [(p[0] - x) / w + 0.5, (p[1] - y) / h])
-  )
-  for (let j = 1; j < points.length; j++) raisedFret(b, m.darkwood, points[j - 1], points[j], 0.067, 0.085)
-  raisedFret(b, m.darkwood, points.at(-1), points[0], 0.067, 0.085)
+  silkScreen(b, m, points, x, y, w, h, flip, flip ? [0.92, 0.82, 0.76] : [1, 0.96, 0.85])
+  screenWick(b, m, x, y, z, w, h, flip, glow)
+  for (let j = 1; j < points.length; j++) raisedFret(b, m.darkwood, points[j - 1], points[j], 0.079, 0.18)
+  raisedFret(b, m.darkwood, points.at(-1), points[0], 0.079, 0.18)
   b.box(m.darkwood, x, axis, z, w, 0.074, 0.097)
   for (let j = 1; j < 6; j++) {
     const a = (Math.PI * j) / 6
@@ -93,8 +101,8 @@ function fanWindow(b, m, x, y, z, w, h) {
       m.timber,
       [x + w * 0.12 * Math.cos(a), axis + 0.13 * h * Math.sin(a), z],
       [x + w * 0.5 * Math.cos(a), axis + h * 0.72 * Math.sin(a), z],
-      0.042,
-      0.055
+      0.057,
+      0.091
     )
   }
   const ring = Array.from({ length: 11 }, (_, i) => [
@@ -137,7 +145,7 @@ function skirt(b, m, width, depth, coreWidth, coreDepth, eave, inner, lift) {
           ])
           b.face(m.roof, p, [0.84, 0.98, 0.97], uv)
         }
-        b.face(m.darkwood, [pt(a, 0, -0.19), pt(c, 0, -0.19), pt(c, 1, -0.18), pt(a, 1, -0.18)], 0.82)
+        b.face(m.darkwood, [pt(a, 0, -0.19), pt(c, 0, -0.19), pt(c, 1, -0.18), pt(a, 1, -0.18)], 0.56)
         b.face(m.roofEdge, [pt(a, 0, -0.156), pt(c, 0, -0.156), pt(c, 0, 0.02), pt(a, 0, 0.02)])
         b.face(m.bronze, [pt(a, 0, 0.02), pt(c, 0, 0.02), pt(c, 0, 0.059), pt(a, 0, 0.059)], 0.98)
         if (i % 3 === 0) b.beam(m.wood, pt(a, 0, -0.196), pt(a, 0.74, -0.201), 0.101, 0.116)
@@ -275,7 +283,7 @@ function apron(b, m, x, y, z, w, h) {
   for (const s of [-1, 1]) b.box(m.bronze, x + s * w * 0.32, y + h * 0.5, z + 0.128, 0.084, h * 0.12, 0.024)
 }
 
-function audienceHall(b, m) {
+function audienceHall(b, m, glow) {
   const lower = [-6.27, -3.88, -1.61, 1.61, 3.88, 6.27]
   for (const s of [-1, 1]) {
     b.at(0, 0, s * 3.07, s === 1 ? 0 : Math.PI, () => {
@@ -286,7 +294,7 @@ function audienceHall(b, m) {
       frieze(b, m, -6.48, 6.48, 15.34, 0)
       for (const x of [-4.96, 5.03]) {
         apron(b, m, x, DECK, 0, 2.05, 0.79)
-        windowBay(b, m, x, DECK + 2.12, 0, 1.93, 2.25, 'bars')
+        screenedBay(b, m, x, DECK + 2.12, 0, 1.93, 2.25, 'bars', x * s > 0, glow)
       }
       // The north facade and the south facade each have three clear doors between
       // the open carved transoms. The long bridge gallery remains open side to side.
@@ -310,7 +318,7 @@ function audienceHall(b, m) {
     }
   }
   floorWithStair(b, m)
-  tideDesk(b, m, -3.89, DECK, 1.48)
+  keeperDesk(b, m, -3.89, DECK, 1.48, glow)
   for (const x of [-4.95, -2.67, 0, 2.62, 4.85])
     b.beam(m.timber, [x, MID - 0.39, -1.017], [x, MID - 0.39, 2.705], 0.176, 0.163)
   skirt(b, m, 17.3, 9.5, 12.6, 5.82, 15.08, MID, 0.51)
@@ -323,13 +331,13 @@ function audienceHall(b, m) {
       frieze(b, m, -4.82, 4.82, 20.15, 0)
       for (const x of [-3.12, 3.12]) {
         apron(b, m, x, MID, 0, 2.72, 0.65)
-        fanWindow(b, m, x, MID + 0.66, 0, 2.55, 2.19)
+        fanWindow(b, m, x, MID + 0.66, 0, 2.55, 2.19, x < 0, glow)
       }
     })
     b.at(0, 0, s * 2.81, s === 1 ? 0 : Math.PI, () => galleryRail(b, m, -6.15, 6.15, 0, MID))
     b.at(s * 6.13, 0, 0, (s * Math.PI) / 2, () => galleryRail(b, m, -2.75, 2.75, 0, MID))
   }
-  tideDesk(b, m, -2.79, MID, -0.11)
+  keeperDesk(b, m, -2.79, MID, -0.11, glow)
   b.box(m.timber, 0, HIGH - 0.158, 0, 9.62, 0.312, 4.6)
   b.box(m.wood, 0, HIGH - 0.027, 0, 9.6, 0.066, 4.62)
   skirt(b, m, 14.3, 8.01, 9.63, 4.64, 19.91, HIGH, 0.56)
@@ -342,7 +350,7 @@ function audienceHall(b, m) {
       frieze(b, m, -4.12, 4.12, 24.94, 0)
       for (const x of [-2.78, 2.78]) {
         apron(b, m, x, HIGH, 0, 1.97, 0.43)
-        windowBay(b, m, x, HIGH + 1.52, 0, 1.86, 1.94, 'lattice')
+        screenedBay(b, m, x, HIGH + 1.52, 0, 1.86, 1.94, 'lattice', x * s < 0, glow)
       }
       galleryRail(b, m, -1.54, 1.54, 0, HIGH)
     })
@@ -358,7 +366,7 @@ function audienceHall(b, m) {
   for (const s of [-1, 1]) ridgeFish(b, m, s * 3.54, 27.72, s, 0.97)
 }
 
-function wingHouse(b, m, hand) {
+function wingHouse(b, m, hand, glow) {
   for (const s of [-1, 1]) {
     b.at(0, 0, s * 2.29, s === 1 ? 0 : Math.PI, () => {
       for (const x of [-2.77, 0, 2.77]) {
@@ -368,8 +376,8 @@ function wingHouse(b, m, hand) {
       frieze(b, m, -2.97, 2.97, 14.15, 0, true)
       const x = hand * s * 1.39
       apron(b, m, x, DECK, 0, 2.53, 0.68)
-      fanWindow(b, m, x, DECK + 0.73, 0, 2.26, 1.81)
-      windowBay(b, m, -x, DECK + 2.81, 0, 2.45, 0.59, 'bars')
+      fanWindow(b, m, x, DECK + 0.73, 0, 2.26, 1.81, x < 0, glow)
+      screenedBay(b, m, -x, DECK + 2.81, 0, 2.45, 0.59, 'lattice', false, glow)
     })
     b.at(s * 2.77, 0, 0, (s * Math.PI) / 2, () => {
       frieze(b, m, -2.29, 2.29, 14.14, 0, true)
@@ -388,16 +396,16 @@ function wingHouse(b, m, hand) {
       frieze(b, m, -2.17, 2.17, 18.09, 0, true)
       const open = hand * s > 0
       if (open) {
-        for (const x of [-1.4, 1.4]) windowBay(b, m, x, WING + 1.31, 0, 0.88, 1.91, 'bars')
+        for (const x of [-1.4, 1.4]) screenedBay(b, m, x, WING + 1.31, 0, 0.88, 1.91, 'bars', x < 0, glow)
         galleryRail(b, m, -0.88, 0.88, 0, WING)
       } else {
         apron(b, m, 0, WING, 0, 3.61, 0.69)
-        fanWindow(b, m, 0, WING + 0.7, 0, 3.28, 1.78)
+        fanWindow(b, m, 0, WING + 0.7, 0, 3.28, 1.78, hand < 0, glow)
       }
     })
     b.at(s * 2.78, 0, 0, (s * Math.PI) / 2, () => galleryRail(b, m, -2.42, 2.42, 0, WING))
   }
-  tideDesk(b, m, -hand * 0.69, WING, -0.11)
+  keeperDesk(b, m, -hand * 0.69, WING, -0.11, glow)
   roof(b, m, 0, 18.0, 0, 7.25, 6.43, 1.87, { hip: 0.27, lift: 0.49 })
   for (const s of [-1, 1]) ridgeFish(b, m, s * 1.68, 19.96, s, 0.64)
 }
@@ -411,20 +419,19 @@ function skywalk(b, m, hand) {
   roof(b, m, hand * 10.56, 13.39, 0, 7.56, 4.71, 0.68, { hip: 0.13, lift: 0.22, detail: false })
 }
 
-// A light chain uses short octagonal silk drums. Its single suspension line
-// continues through the wooden beads; the shade colour changes with each tier.
+// Balloons of honey silk and smaller persimmon shades share a braided suspension cord.
 function lanternChain(b, m, x, z, top, n, span, glow) {
   b.tube(m.bronze, [x, top - 0.21 - (n - 1) * span - 0.34, z], [x, top + 0.026, z], 0.018, 0.018, 6, 1, false)
   for (let j = 0; j < n; j++) {
     const y = top - 0.43 - j * span,
-      rr = j % 2 ? 0.231 : 0.296,
-      h = j % 2 ? 0.48 : 0.59
-    const red = j % 3 === 1
-    smallShade(b, m, x, y, z, rr, h, red)
-    glow(x, y, z, red ? 0xff7f48 : 0xffbb71, red ? 5.2 : 8.4, red ? 5.8 : 7.4)
+      rr = j % 2 ? 0.27 : 0.37,
+      h = j % 2 ? 0.49 : 0.65
+    const red = j % 2 === 0
+    silkLantern(b, m, x, y, z, rr, h, red)
+    glow(x, y, z, red ? 0xff692e : 0xffb15a, red ? 2.0 : 3.0, red ? 3.35 : 4.1)
   }
   b.tube(
-    m.redSilk,
+    m.vermilion,
     [x, top - 0.82 - (n - 1) * span - 0.28, z],
     [x, top - 0.82 - (n - 1) * span, z],
     0.04,
@@ -439,24 +446,36 @@ function ceremonialPillar(b, m, x, z, base) {
   for (const y of [0.63, 0.74, 2.74, 3.41])
     b.tube(m.bronze, [x, base + y, z], [x, base + y + 0.056, z], 0.191, 0.182, 8)
   b.tube(m.teal, [x, base + 2.94, z], [x, base + 3.13, z], 0.37, 0.28, 8)
-  smallShade(b, m, x, base + 3.47, z, 0.294, 0.72)
+  cageLamp(b, m, x, base + 3.47, z, 0.33, 0.72)
   b.tube(m.teal, [x, base + 3.82, z], [x, base + 4.1, z], 0.5, 0.14, 8)
   b.tube(m.bronze, [x, base + 4.09, z], [x, base + 4.46, z], 0.13, 0.018, 8)
 }
 
-export function watergate(b, m, world) {
+export function watergate(b, source, world) {
+  const m = gatePalette(source)
   gateFinish(m)
   b.at(0, 0, -9, 0, () => {
     const glow = (x, y, z, color, power, range) => world.lamp(...b.point([x, y, z]), color, power, range)
     const pendant = (x, y, z, anchor, r, h, power, range, red = false) => {
-      b.tube(m.bronze, [x, y + h * 0.49, z], [x, anchor, z], 0.018, 0.018, 6, 1, false)
-      smallShade(b, m, x, y, z, r, h, red)
-      glow(x, y, z, red ? 0xff9058 : 0xffbb77, power, range)
+      const wall = z - Math.sign(z) * 0.245
+      b.box(m.bronze, x, anchor + 0.054, wall, 0.105, 0.19, 0.079, 0.68)
+      b.beam(m.darkwood, [x, anchor + 0.034, wall], [x, anchor + 0.034, z], 0.085, 0.074)
+      b.tube(m.bronze, [x, y + h * 0.49, z], [x, anchor + 0.021, z], 0.018, 0.018, 6, 1, false)
+      silkLantern(b, m, x, y, z, r, h, red)
+      glow(x, y, z, red ? 0xff853e : 0xffb865, power, range)
     }
     stoneBridge(b, m)
-    audienceHall(b, m)
+    // A modest oil niche above each central keystone reveals the dressed
+    // arch crown. The wick and bracket clear the full barrel passage.
+    for (const face of [-1, 1]) {
+      const { x, y, z, radius, height, power } = keystoneLamp
+      b.beam(m.patina, [x, y + height * 0.28, face * 4.47], [x, y + height * 0.28, face * z], 0.104, 0.077)
+      cageLamp(b, m, x, y, face * z, radius, height)
+      glow(x, y, face * z, 0xffbd78, power, 6.1)
+    }
+    audienceHall(b, m, glow)
     for (const side of [-1, 1]) {
-      b.at(side * 17.14, 0, 0, 0, () => wingHouse(b, m, side))
+      b.at(side * 17.14, 0, 0, 0, () => wingHouse(b, m, side, glow))
       skywalk(b, m, side)
       for (const face of [-1, 1]) {
         const x = side * 7.82,
@@ -467,27 +486,46 @@ export function watergate(b, m, world) {
           wz = face * 3.05
         b.beam(m.timber, [wx, 17.99, face * 1.76], [wx, 17.99, wz], 0.11, 0.115)
         lanternChain(b, m, wx, wz, 17.92, 3, 0.79, glow)
-        const ax = side * 7.03,
-          az = face * 3.09
-        b.beam(m.bronze, [side * 7.46, 4.91, az], [ax, 4.91, az], 0.084, 0.091)
-        pendant(ax, 4.38, az, 4.91, 0.21, 0.57, 20.5, 9.8)
-        pendant(side * 6.65, 5.4, face * 1.1, 5.87, 0.19, 0.56, 13.6, 7.7)
-        pendant(side * 15.9, 4.18, face * 2.7, 4.94, 0.19, 0.51, 12, 7.2)
-        // The pier beacons sit on the pointed cutwaters. They give the ashlar on
-        // either side of each main arch a warm grazing light all the way to the river.
-        b.tube(m.coping, [side * 8.43, 4.59, face * 4.58], [side * 8.43, 4.91, face * 4.58], 0.19, 0.13, 8)
-        smallShade(b, m, side * 8.43, 5.13, face * 4.58, 0.235, 0.55)
-        b.tube(m.patina, [side * 8.43, 5.41, face * 4.58], [side * 8.43, 5.6, face * 4.58], 0.32, 0.08, 8)
-        glow(side * 8.43, 5.13, face * 4.58, 0xffaa5e, 18, 9.6)
-        pendant(side * 2.76, 13.72, face * 3.05, 15.15, 0.29, 0.74, 13, 8.2)
-        pendant(side * 1.27, 18.97, face * (face === 1 ? 1.91 : 2.61), 20.05, 0.24, 0.65, 9.3, 7.1)
-        pendant(side * 1.38, 23.63, face * 1.89, 24.77, 0.276, 0.68, 8.7, 7.9)
+        // Oil lamps sit in bronze cages beneath the vaults. Their brackets
+        // actually meet the radial stones at the two mouths of each tunnel.
+        for (const { x: xx, y: yy, z: zz, anchor, radius: r, power, range } of vaultLamps) {
+          const xxw = side * xx,
+            zzw = face * zz
+          b.beam(m.patina, [side * (xx + 0.48), anchor, zzw], [xxw, anchor, zzw], 0.074, 0.081)
+          b.tube(m.bronze, [xxw, yy + 0.34, zzw], [xxw, anchor, zzw], 0.022, 0.022, 6, 0.8, false)
+          cageLamp(b, m, xxw, yy, zzw, r, 0.67)
+          glow(xxw, yy, zzw, 0xffab57, power, range)
+        }
+        // Both cutwaters carry tide lights. Their overhanging trays put the
+        // wick ahead of the wall so the piers and the springers catch its light.
+        for (const { x: offset, base: level, z, radius: r, height: h, power } of bridgeBeacons) {
+          const bx = offset * side,
+            bz = z * face
+          b.beam(m.patina, [bx, level - 0.27, 4.56 * face], [bx, level + 0.1, bz], 0.145, 0.13)
+          b.box(m.coping, bx, level + 0.065, face * 4.73, r * 1.7, 0.18, 0.94)
+          const ly = level + 0.16 + h * 0.48
+          cageLamp(b, m, bx, ly, bz, r, h)
+          glow(bx, ly, bz, 0xffae61, power, 7.2)
+        }
+        pendant(side * 2.73, 13.78, face * 3.34, 15.15, 0.405, 0.89, 6.8, 5.35, side * face < 0)
+        pendant(side * 1.27, 19.02, face * (face === 1 ? 2.22 : 2.89), 20.05, 0.335, 0.74, 4.7, 4.9)
+        pendant(side * 1.37, 23.66, face * 2.06, 24.77, 0.37, 0.76, 4.2, 4.6, side * face > 0)
         for (const gx of [9.24, 11.93])
-          pendant(side * gx, 12.77, face * 1.7, 13.26, 0.18, 0.52, gx < 10 ? 6.2 : 8.6, 6.7, gx < 10)
-        pendant(side * 17.14 - side * 1.29, 12.99, face * 2.31, 14.05, 0.243, 0.65, 11.4, 7.4)
-        pendant(side * 17.14 + side * 0.79, 17.08, face * 1.74, 17.98, 0.199, 0.54, 9.0, 7.1, face < 0)
+          pendant(
+            side * gx,
+            12.73,
+            face * 1.94,
+            13.26,
+            gx < 10 ? 0.25 : 0.29,
+            0.57,
+            gx < 10 ? 2.7 : 4.1,
+            4.25,
+            gx < 10
+          )
+        pendant(side * 17.14 - side * 1.29, 12.99, face * 2.47, 14.05, 0.34, 0.71, 4.8, 4.8)
+        pendant(side * 17.14 + side * 0.79, 17.08, face * 1.93, 17.98, 0.29, 0.64, 3.6, 4.4, face < 0)
         ceremonialPillar(b, m, side * 49.22, face * 3.77, 1.35)
-        glow(side * 49.22, 4.82, face * 3.77, 0xffb46f, 15, 7.8)
+        glow(side * 49.22, 4.82, face * 3.77, 0xffab65, 8.3, 6.2)
         for (const [xx, level] of [
           [31.11, 7.41796],
           [41.27, 4.29198],
@@ -496,9 +534,9 @@ export function watergate(b, m, world) {
             sz = face * 3.34
           b.box(m.stone, sx, level + 0.23, sz, 0.4, 0.46, 0.44)
           b.tube(m.patina, [sx, level + 0.42, sz], [sx, level + 0.98, sz], 0.154, 0.106, 8)
-          smallShade(b, m, sx, level + 1.18, sz, 0.206, 0.48)
+          cageLamp(b, m, sx, level + 1.18, sz, 0.237, 0.48)
           b.tube(m.patina, [sx, level + 1.43, sz], [sx, level + 1.6, sz], 0.283, 0.069, 8)
-          glow(sx, level + 1.18, sz, 0xffbe80, 8.2, 6.9)
+          glow(sx, level + 1.18, sz, 0xffba7b, 5.5, 5.3)
         }
       }
     }

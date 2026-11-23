@@ -1,31 +1,15 @@
 import * as T from 'three'
 import { box, beam, panel, roof } from './reachWardFrame.js'
 import { reachFace } from './reachWardArt.js'
+import { streetLantern } from './reachWardLamps.js'
+import { oilStand } from './wardOilLamps.js'
 const sign = [-1, 1]
-function lampShade(b, m, x, y, z, r, h, red = false, square = false, tint = 1) {
-  const n = square ? 4 : 7,
-    a0 = square ? Math.PI * 0.25 : 0,
-    levels = [
-      [-0.5, 0.53],
-      [-0.31, 0.94],
-      [0.22, 1],
-      [0.5, 0.59],
-    ]
-  const at = (j, t) => [
-    x + r * levels[t][1] * Math.cos(a0 + (2 * Math.PI * j) / n),
-    y + h * levels[t][0],
-    z + r * levels[t][1] * Math.sin(a0 + (2 * Math.PI * j) / n),
-  ]
-  for (let i = 0; i < n; i++)
-    for (let k = 0; k < 3; k++)
-      reachFace(
-        b,
-        m.reachLights,
-        red ? 37 : 36,
-        [at(i, k), at(i + 1, k), at(i + 1, k + 1), at(i, k + 1)],
-        tint
-      )
-  for (const s of sign) box(b, m.reachDetail, 27, x, y + s * h * 0.51, z, r * 0.89, 0.065, r * 0.88, 0.92)
+
+// The hood and the interior walls absorb much of the light directed into air.
+// Paving, wood, figures and raindrops still sample the full local source.
+function shelteredLight(world, b, x, y, z, color, power, range, air) {
+  const lamp = world?.addLightAt?.(b, x, y, z, color, power, range)
+  if (lamp && typeof lamp === 'object') lamp.air = air
 }
 function fabric(b, m, h, x, y, z, w, depth) {
   const mat = m.reachDetail,
@@ -147,34 +131,54 @@ export function streetFront(b, m, h, world) {
         const X = (k ? -1 : 1) * side * (w / 2 - 0.27),
           lz = z - 0.51,
           red = h.trade === 'silk' || (h.phase + k) % 5 === 1
-        beam(b, mat, 24, [X, ground - 0.2, lz - 0.45], [X, ground - 0.12, lz + 0.05], 0.08, 0.09)
-        beam(b, mat, 27, [X, ground - 0.13, lz + 0.05], [X, ground - 0.46, lz + 0.05], 0.028, 0.028)
-        lampShade(
+        const lanternY = ground - (h.sig ? 0.98 : 0.85),
+          lanternZ = lz + 0.26,
+          r = h.sig ? 0.35 : red ? 0.29 : 0.255,
+          height = h.sig ? 0.85 : 0.69
+        // The cantilever is dowelled into the porch beam. Its lantern sits
+        // outside the valance so a visitor can locate the source from the quay.
+        beam(b, mat, 24, [X, ground - 0.19, lz - 0.55], [X, ground - 0.11, lanternZ + 0.04], 0.105, 0.098)
+        beam(b, mat, 27, [X, ground - 0.55, lz - 0.41], [X, ground - 0.14, lz + 0.07], 0.061, 0.071)
+        beam(b, mat, 27, [X, ground - 0.11, lanternZ], [X, lanternY + height * 0.54, lanternZ], 0.037, 0.037)
+        streetLantern(b, m, X, lanternY, lanternZ, r, height, red, h.phase % 4 === 2, red ? 0.92 : 0.97)
+        // The light on this porch flagstone falls from the lantern immediately
+        // above its back edge, even between samples of the distant light field.
+        const cx = X * 0.94,
+          near = z + 0.15,
+          back = z - 0.72
+        reachFace(
           b,
-          m,
+          m.reachFrame,
+          115,
+          [
+            [cx - 0.62, 0.033, near],
+            [cx + 0.62, 0.033, near],
+            [cx + 0.62, 0.033, back],
+            [cx - 0.62, 0.033, back],
+          ],
+          0.83
+        )
+        shelteredLight(
+          world,
+          b,
           X,
-          ground - 0.77,
-          lz + 0.05,
-          0.2 + (h.sig ? 0.07 : 0),
-          0.65,
-          red,
-          h.phase % 4 === 2,
-          red ? 1.08 : 0.95
+          lanternY,
+          lanternZ,
+          red ? 0xff874d : s.glow,
+          h.sig ? 39 : h.use === 'banquet' ? 26 : 30,
+          h.sig ? 10.8 : 8.9,
+          0.65
         )
       }
     }
-    if (h.phase % 3 !== 1 || h.sig)
-      world?.addLightAt?.(
-        b,
-        side * w * 0.31,
-        ground - 1.02,
-        z - 0.15,
-        s.glow,
-        h.sig ? 25 : 16,
-        h.sig ? 10.8 : 7.7
-      )
   } else if (h.use === 'home' && h.phase % 3 === 0) {
-    lampShade(b, m, -w * 0.25, ground - 0.7, z - 0.89, 0.15, 0.47, false, true, 0.66)
+    const X = -w * 0.25,
+      Y = ground - 0.77,
+      Z = z - 0.67
+    beam(b, mat, 24, [X, ground - 0.36, Z - 0.62], [X, ground - 0.28, Z + 0.03], 0.072, 0.078)
+    beam(b, mat, 27, [X, ground - 0.28, Z], [X, Y + 0.29, Z], 0.037, 0.037)
+    streetLantern(b, m, X, Y, Z, 0.22, 0.54, false, true, 0.76)
+    shelteredLight(world, b, X, Y, Z, 0xffc680, 16, 7, 0.53)
   }
   if (h.use === 'gallery' || h.use === 'banquet') {
     const floor = hallLevel(h),
@@ -190,20 +194,25 @@ export function streetFront(b, m, h, world) {
       if (h.sig || j % 2 === 0)
         panel(b, mat, 39, X, Y - 0.31, rz + 0.027, Math.min(0.94, (q.w / count) * 0.43), 0.065, 0.9)
       beam(b, mat, 27, [X, Y - 0.26, rz + 0.02], [X, Y - 0.28 - drop, rz + 0.02], 0.032, 0.034)
-      lampShade(
+      const lanternY = Y - 0.62 - drop,
+        lanternZ = rz + 0.02,
+        red = h.use === 'banquet' && j % 2 === 0,
+        large = h.sig || (h.use === 'banquet' && j === 0)
+      streetLantern(
         b,
         m,
         X,
-        Y - 0.51 - drop,
-        rz + 0.02,
-        0.215 + (h.sig ? 0.055 : 0),
-        0.56 + (h.sig ? 0.105 : 0),
-        h.use === 'banquet' && j % 2 === 0,
-        false,
-        j % 2 ? 0.77 : 1.08
+        lanternY,
+        lanternZ,
+        large ? 0.34 : 0.24,
+        large ? 0.77 : 0.62,
+        red,
+        !red && h.phase % 3 === 1,
+        j % 2 ? 0.85 : 1.13
       )
+      if (j === 0 || (h.sig && j === count - 1 && count > 2))
+        shelteredLight(world, b, X, lanternY, lanternZ, red ? 0xff9757 : s.glow, large ? 31 : 22, 8.6, 0.51)
     }
-    if (h.sig || h.j % 2 === 0) world?.addLightAt?.(b, 0, Y - 0.79, rz + 0.3, s.glow, h.sig ? 20 : 14, 8.5)
   }
   if (h.sig && h.kind !== 'return' && h.phase % 3 !== 2) {
     const q = sizeAt(h, h.floors - 1),
@@ -262,7 +271,7 @@ function shelf(b, m, x, y, z, w, h) {
   for (const side of sign) box(b, mat, 24, x + side * w * 0.49, y + h / 2, z, 0.095, h, 0.44)
   for (let i = 0; i < 3; i++) box(b, mat, 27, x, y + 0.18 + i * h * 0.4, z, w, 0.105, 0.48)
 }
-export function inside(b, m, h) {
+export function inside(b, m, h, world) {
   if (!h.open) return
   const mat = m.reachDetail,
     s = h.style,
@@ -353,6 +362,23 @@ export function inside(b, m, h) {
       jar(b, m, x + delta, 1.19, z + 0.04, 0.18 + (j % 2) * 0.05, 0.33 + (j % 2) * 0.17, j % 2 ? 38 : 27)
     for (let i = 0; i < 3; i++)
       box(b, mat, 27, -x, 0.32 + i * 0.105, z + 0.23, 0.75 - i * 0.08, 0.09, 0.51 - i * 0.06)
+  }
+  if (h.sig || h.phase % 4 < 2) {
+    const width = Math.min(2.1, w * 0.255),
+      X = -side * (w / 2 - width / 2 - 0.17),
+      Z = d / 2 - 1.66
+    oilStand(b, m, X, 1.142, Z, h.sig ? 1.35 : 1.1, reachFace)
+    shelteredLight(
+      world,
+      b,
+      X,
+      1.142 + (h.sig ? 0.55 : 0.45),
+      Z + 0.032,
+      h.trade === 'books' ? 0xffd386 : 0xffad5f,
+      h.sig ? 29 : 21,
+      7.7,
+      0.18
+    )
   }
   const rz = d / 2 + 0.15,
     roofY = h.ground + 0.04

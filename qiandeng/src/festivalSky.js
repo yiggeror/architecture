@@ -2,8 +2,8 @@ import { firmament } from './firmament.js'
 import { launchSites, skyLanterns } from './skyLanterns.js'
 import { festivalKites } from './skyKites.js'
 
-export function festivalSky(scene, world) {
-  const sky = firmament(scene)
+export function festivalSky(scene, world, initialDay = false) {
+  const sky = firmament(scene, initialDay)
   const procession = skyLanterns(scene)
   const kites = festivalKites(scene, world)
   function mode(day) {
@@ -16,7 +16,7 @@ export function festivalSky(scene, world) {
     procession.update(t, day)
     kites.update(t, day)
   }
-  return { mode, update }
+  return { mode, update, ready: sky.ready }
 }
 
 // Four moored platforms. The loading edge and the rolled paper stay inside the

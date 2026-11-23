@@ -1,9 +1,10 @@
 import * as T from 'three'
 import { generator } from './mesh.js'
 import { roomArt } from './reachWardRooms.js'
+import { drawLampSilk, paperLight } from './wardLampPaint.js'
 const sz = 128,
   cols = 8,
-  rows = 14
+  rows = 15
 const wood = ['#432f2b', '#773e32', '#3c514d', '#a48053']
 const wall = ['#d9c5a7', '#bba98c', '#736d6b', '#bfb7a1']
 const glaze = ['#3e6462', '#465962', '#4a5159', '#48605a']
@@ -87,6 +88,13 @@ function windows(g, id, light) {
   soft.addColorStop(1, light ? (room ? '#412a23' : '#12110f') : '#694e40')
   g.fillStyle = soft
   g.fillRect(x, top, w, bottom - top)
+  if (room && light) {
+    g.save()
+    g.translate(x, top)
+    g.scale(w / 128, (bottom - top) / 128)
+    paperLight(g, k)
+    g.restore()
+  }
   for (const xx of [x, x + w / 2, x + w]) line(g, xx, top, xx, bottom, xx === x + w / 2 ? 3.3 : 4, jamb)
   for (const yy of [top, top + 13, bottom - 13, bottom])
     line(g, x, yy, x + w, yy, yy === top || yy === bottom ? 4 : 2, jamb)
@@ -124,6 +132,75 @@ function windows(g, id, light) {
   }
 }
 function tile(g, id, light, r) {
+  if (id >= 116) {
+    // Turned bronze and darker weathered copper share the existing atlas.
+    // Their faces catch the flame. Only the wick has a transmission plate.
+    if (light) {
+      field(g, id === 119 ? '#ffe7a3' : '#010101')
+      return
+    }
+    if (id === 118 || id === 119) {
+      field(g, id === 119 ? '#efc67f' : '#292822')
+      return
+    }
+    const copper = id === 117,
+      polish = g.createLinearGradient(0, 18, 128, 63)
+    const colours = copper
+      ? ['#45524a', '#838473', '#4c6156', '#74816f', '#435146']
+      : ['#816441', '#ccb58a', '#96774b', '#cfb485', '#836942']
+    for (let i = 0; i < colours.length; i++) polish.addColorStop([0, 0.19, 0.44, 0.76, 1][i], colours[i])
+    g.fillStyle = polish
+    g.fillRect(0, 0, 128, 128)
+    for (let j = 0; j < 320; j++) {
+      const x = r() * 128,
+        y = r() * 128
+      line(
+        g,
+        x,
+        y,
+        x + 2 + r() * 11,
+        y + r() * 0.43,
+        0.58,
+        j % 3 ? 'rgba(42,49,35,.065)' : 'rgba(244,224,169,.12)'
+      )
+    }
+    return
+  }
+  if (id >= 112) {
+    // Window lining, sill and the board under the lamp arm have different
+    // depth axes. Their inner arrises catch the same spill as the paper.
+    const lining = id === 112 || id === 113,
+      deck = id === 115
+    if (!light) {
+      tile(g, deck ? 33 : lining ? 24 : 27, false, r)
+      return
+    }
+    field(g, '#040303')
+    const wash = g.createRadialGradient(
+      lining ? 129 : 64,
+      lining ? 63 : deck ? -18 : -6,
+      2,
+      lining ? 135 : 64,
+      lining ? 62 : 0,
+      deck ? 168 : 153
+    )
+    wash.addColorStop(0, id === 113 ? '#986540' : deck ? '#855331' : '#c18850')
+    wash.addColorStop(0.3, id === 113 ? '#65432a' : '#956139')
+    wash.addColorStop(0.72, '#533824')
+    wash.addColorStop(1, '#161716')
+    g.fillStyle = wash
+    g.fillRect(0, 0, 128, 128)
+    if (deck) {
+      for (const y of [42, 85, 125]) line(g, 0, y, 128, y, 2.2, '#372c22')
+      for (let j = 0; j < 3; j++)
+        line(g, 32 + 50 * (j % 2), 42 * j, 32 + 50 * (j % 2), 42 * (j + 1), 1.5, '#39291d')
+    }
+    return
+  }
+  if (id === 36 || id === 37) {
+    drawLampSilk(g, id === 37 ? 0 : 1, light)
+    return
+  }
   if (id >= 64 && id < 96) {
     roomArt(g, id, light)
     return
@@ -159,13 +236,6 @@ function tile(g, id, light, r) {
   }
   if (light) {
     if (id === 39) field(g, '#967449')
-    if (id === 36 || id === 37) {
-      const g0 = g.createRadialGradient(64, 62, 0, 62, 62, 91)
-      g0.addColorStop(0, id === 36 ? '#ffdc81' : '#ff893f')
-      g0.addColorStop(1, id === 36 ? '#9c571e' : '#8c2514')
-      g.fillStyle = g0
-      g.fillRect(0, 0, 128, 128)
-    }
     return
   }
   if (id < 20) {
@@ -245,10 +315,6 @@ function tile(g, id, light, r) {
         g.fillStyle = '#c9ac70'
         g.fillRect(x + 10, y + 8, 5, 3)
       }
-  } else if (id === 36 || id === 37) {
-    field(g, id === 36 ? '#f4cb75' : '#d76841')
-    for (let i = 0; i <= 6; i++) line(g, i * 23, 0, i * 23 + 3, 128, 2.3, '#8f5b3f')
-    for (const y of [3, 10, 118, 125]) line(g, 0, y, 128, y, 2.2, '#77553d')
   } else {
     field(g, id === 38 ? '#6a928c' : '#b58f57')
     for (let j = 0; j < 6; j++) line(g, 0, j * 23, 128, j * 23, 1.2, '#816746')
@@ -321,6 +387,12 @@ export function reachMaterials(m) {
     roughness: 0.67,
     side: T.DoubleSide,
   })
+  // Keep only occupied window quads at every projected size. Structural
+  // triangles on the same facade retain the normal screen-space reduction.
+  m.reachPaper = m.reachFrame.clone()
+  m.reachPaper.name = '灯下人家窗纸'
+  m.reachPaper.emissive.set(0xffe4be)
+  m.reachPaper.emissiveIntensity = 2.73
   m.reachDetail = m.reachFrame.clone()
   m.reachDetail.name = '街坊木作丝帘'
   m.reachDetail.emissiveIntensity = 1.72

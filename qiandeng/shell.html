@@ -69,21 +69,6 @@
         padding-bottom: var(--bottom);
         background: linear-gradient(0deg, #14142082, transparent);
       }
-      .brand { display: flex; align-items: center; gap: 12px; }
-      .title-stack { display:grid; justify-items:start; }
-      #character-album {
-        color:#f1d2ad; text-decoration:none; font-size:11px; line-height:1.5;
-        letter-spacing:.13em; text-shadow:0 1px 4px #16161c; pointer-events:auto;
-        padding:5px 5px 5px 0; margin-bottom:-5px;
-      }
-      #character-album:is(:hover,:focus-visible) { color:#fff4dc; text-decoration:underline; }
-      .seal {
-        width: 33px;
-        height: 38px;
-        flex: none;
-        color: #e0b28c;
-        filter: drop-shadow(0 1px 3px #151321);
-      }
       .brand h1 {
         margin: 0;
         font-family: "Noto Serif CJK SC", "Songti SC", SimSun, serif;
@@ -202,15 +187,6 @@
         clip-path: inset(50%);
         white-space: nowrap;
       }
-      #loading {
-        position: absolute;
-        z-index: 1;
-        inset: 46% 10% auto;
-        margin: 0;
-        text-align: center;
-        font: 15px/1.8 "Noto Serif CJK SC", "Songti SC", SimSun, serif;
-        letter-spacing: .1em;
-      }
       @media (max-width: 720px) {
         .mouse-guide { flex-wrap: wrap; gap: 7px; }
         .tip + .tip { padding-left: 7px; }
@@ -218,8 +194,6 @@
       }
       @media (max-width: 540px) {
         :root { --gutter: 14px; --bottom: max(14px, env(safe-area-inset-bottom)); }
-        .brand { gap: 8px; }
-        .seal { width: 26px; height: 31px; }
         .brand h1 { font-size: 21px; letter-spacing: .1em; }
         .phase button { gap: 4px; padding-inline: 7px; font-size: 12px; }
         footer { flex-direction: column; align-items: flex-end; gap: 8px; }
@@ -290,44 +264,473 @@
       @media (forced-colors: active) {
         button[aria-pressed="true"] { outline: 1px solid Highlight; outline-offset: -3px; }
       }
-      #loading { pointer-events:none; z-index:6; }
       @media (max-width: 480px) and (any-pointer:coarse) {
         #viewpoints button {min-width:44px;padding-inline:6px;}
         .touch-tools {bottom:calc(var(--bottom) + 40px);}
         .hint {font-size:10px;}
       }
-      .arrival {
-        position:absolute;inset:0;z-index:1;pointer-events:none;
-        background:#202a38 center center/cover no-repeat;
-        opacity:1;transition:opacity .2s ease;
+      #court[inert] :is(header, footer, .touch-tools) { visibility: hidden; }
+      #arrival {
+        --lamp-x: 66%;
+        --lamp-foot: 79%;
+        --lamp-height: min(79vh, 68vw);
+        --folio-inset: clamp(12px, 2.1vmin, 26px);
+        position: fixed;
+        inset: 0;
+        z-index: 8;
+        overflow: hidden;
+        isolation: isolate;
+        background: radial-gradient(ellipse at 60% 36%, #233947 0%, #162c3a 34%, #0c1c2a 70%, #091621);
+        color: #f4ddaa;
+        opacity: 1;
+        transition: opacity 340ms ease-out;
       }
-      #court[aria-busy="false"] .arrival{opacity:0;visibility:hidden}
-      #court[aria-busy="true"] header,#court[aria-busy="true"] footer,#court[aria-busy="true"] .touch-tools{z-index:2}
-      #court[aria-busy="true"] #loading{
-        inset:auto auto max(15vh,80px) 50%;transform:translateX(-50%);
-        padding:.28em .85em;color:#fff0d4;font-size:12px;
-        background:#1c232bd9;border:1px solid #b7946c84;border-radius:3px;white-space:nowrap;
+      #arrival[data-leaving] { opacity: 0; pointer-events: none; }
+      .arrival-glow {
+        position: absolute;
+        left: var(--lamp-x);
+        top: calc(var(--lamp-foot) - var(--lamp-height));
+        width: var(--lamp-height);
+        height: var(--lamp-height);
+        transform: translateX(-50%);
+        background: radial-gradient(ellipse at 50% 46%, #efad5e38, #cda15c16 23%, #b39f6a0a 38%, transparent 61%);
       }
-      /* ARRIVAL_PHOTOS */
+      #river-print {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        cursor: default;
+      }
+      .rain-impact {
+        position: absolute;
+        left: var(--lamp-x);
+        top: calc(var(--lamp-foot) - var(--lamp-height) * .041);
+        width: min(29vw, calc(var(--lamp-height) * .28));
+        aspect-ratio: 7.5;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+      .rain-impact i {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1px solid #7fa09a66;
+        border-right-color: transparent;
+        border-bottom-color: #dbb77e99;
+        animation: rain-ring 4.8s ease-out infinite;
+      }
+      .rain-impact i + i { animation-delay: .28s; }
+      .rain-impact::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 46%;
+        width: 1.5px;
+        height: 3px;
+        border-radius: 50%;
+        background: #e6c58c;
+        animation: rain-drop 4.8s ease-in infinite;
+      }
+      @keyframes rain-ring {
+        0%, 15% { transform: scale(.04); opacity: 0; }
+        19% { opacity: .85; }
+        80%, 100% { transform: scale(1); opacity: 0; }
+      }
+      @keyframes rain-drop {
+        0% { transform: translateY(calc(var(--lamp-height) * -.054)); opacity: 0; }
+        6% { opacity: .86; }
+        15% { transform: translateY(0); opacity: .86; }
+        16%, 100% { transform: translateY(0); opacity: 0; }
+      }
+      .arrival-lamp {
+        position: absolute;
+        left: var(--lamp-x);
+        bottom: calc(100% - var(--lamp-foot));
+        height: var(--lamp-height);
+        aspect-ratio: 500 / 650;
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+      .arrival-lamp > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+        transform-origin: 50% -12%;
+        animation: lamp-drift 7s ease-in-out infinite alternate;
+      }
+      @keyframes lamp-drift {
+        from { transform: rotate(-.68deg); }
+        to { transform: rotate(.82deg); }
+      }
+      .arrival-paper {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: .145;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='124' height='124'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.79 .62' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23b4a991' filter='url(%23n)' d='M0 0h124v124H0z'/%3E%3C/svg%3E");
+        mix-blend-mode: soft-light;
+      }
+      .folio-edge {
+        position: absolute;
+        inset: var(--folio-inset);
+        border: 1px solid #c9ac7939;
+        pointer-events: none;
+      }
+      .folio-edge i {
+        position: absolute;
+        width: 17px;
+        height: 17px;
+        top: -1px;
+        left: -1px;
+        border-top: 1px solid #c3ab80;
+        border-left: 1px solid #c3ab80;
+      }
+      .folio-edge i::after {
+        content: "";
+        position: absolute;
+        left: 3px;
+        top: 3px;
+        width: 4px;
+        height: 4px;
+        border: 1px solid #bd9c6d99;
+      }
+      .folio-edge i:nth-child(2) { left: auto; right: -1px; transform: rotate(90deg); }
+      .folio-edge i:nth-child(3) { left: auto; top: auto; right: -1px; bottom: -1px; transform: rotate(180deg); }
+      .folio-edge i:nth-child(4) { top: auto; bottom: -1px; transform: rotate(270deg); }
+      .arrival-caption {
+        position: absolute;
+        left: 13.5%;
+        top: 43%;
+        transform: translateY(-30%);
+      }
+      .arrival-title {
+        display: flex;
+        align-items: center;
+        position: relative;
+        width: max-content;
+        margin: 0 0 25px -0.07em;
+        font-size: clamp(62px, 7.65vw, 130px);
+        line-height: 1;
+      }
+      .arrival-glyph { width: .94em; height: 1em; fill: #f2dcac; }
+      .arrival-seal {
+        align-self: flex-end;
+        width: .24em;
+        height: .30em;
+        margin: 0 0 .11em .07em;
+      }
+      .loading-measure {
+        width: clamp(194px, 15vw, 244px);
+        margin-left: .35em;
+      }
+      .loading-ruler {
+        position: relative;
+        height: 4px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #cbb4854d;
+        background: repeating-linear-gradient(to right, #cbb48567 0 1px, transparent 1px 12.5%) left bottom / 100% 2px no-repeat;
+      }
+      .loading-ruler > i {
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        width: 100%;
+        height: 1px;
+        transform: scaleX(var(--progress, 0));
+        transform-origin: left;
+        background: #e3bd7f;
+        transition: transform .2s ease-out;
+      }
+      .loading-state {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: .6em;
+        color: #d4c4a4;
+      }
+      #loading {
+        margin: 0;
+        font: 400 clamp(12px, 1vw, 14px)/1.55 "Noto Serif CJK SC", "Songti SC", "STSong", SimSun, serif;
+        letter-spacing: .10em;
+      }
+      #loading-count {
+        color: #ab9c81;
+        font: 400 10px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: .025em;
+        white-space: nowrap;
+      }
+      #loading-error {
+        position: fixed;
+        z-index: 10;
+        left: 50%;
+        bottom: max(8vh, 38px);
+        width: max-content;
+        max-width: min(calc(100% - 52px), 38em);
+        margin: 0;
+        padding: 12px 18px;
+        transform: translateX(-50%);
+        border: 1px solid #c9a373;
+        background: #142634;
+        color: #ffedcc;
+        font-size: 14px;
+        line-height: 1.65;
+        text-align: center;
+      }
+      @media (max-aspect-ratio: 4/5) {
+        #arrival { --lamp-x: 63%; --lamp-foot: 70%; --lamp-height: min(70vh, 139vw); }
+        .arrival-caption { left: 11%; top: 29%; transform: none; }
+        .arrival-title { flex-direction: column; margin: 0; font-size: clamp(49px, 11.5vw, 90px); }
+        .arrival-glyph { height: .96em; }
+        .arrival-seal { align-self: center; margin: .20em 0 0; width: .30em; height: .37em; }
+        .loading-measure { position: fixed; left: 15%; right: 15%; bottom: 11.5%; width: auto; margin: 0; }
+        #loading { font-size: 13px; }
+      }
+      @media (max-height: 440px) and (min-aspect-ratio: 4/5) {
+        #arrival { --lamp-height: 79vh; --lamp-foot: 80%; }
+        .arrival-title { margin-bottom: 14px; font-size: clamp(52px, 12vh, 66px); }
+        .loading-ruler { margin-bottom: 7px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #arrival, .loading-ruler > i { transition: none; }
+        .arrival-lamp > svg { animation: none; }
+        .rain-impact { display: none; }
+      }
     </style>
   </head>
   <body>
-    <main id="court" aria-busy="true">
-      <div class="arrival" aria-hidden="true"></div>
-      <p id="loading" role="status">正在点亮千灯渡…</p>
-      <header>
-        <div class="brand">
-          <svg class="seal" viewBox="0 0 32 37" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 2.6 28.2 2l.8 31.6-25.8.7z" stroke-width="1.5"/>
-            <g stroke-width="1.35">
-              <path d="M8 17c3-.3 5.9-2.5 8-5.4 1.8 2.9 4.3 4.8 8 5.4M11 17v4.5m10-4.5v4.5M7 22h18M13 10h6m-3-3v4"/>
-              <path d="M8.5 24.7c3.2-1.9 5.7-1.8 8.7-.5 2.3.9 4.9.9 7.2-.8M11 28.2c2.1-.9 4.4-.7 6.4.1 1.5.6 3.3.6 5.1-.2"/>
+    <section id="arrival" aria-labelledby="arrival-name">
+      <div class="arrival-glow" aria-hidden="true"></div>
+      <canvas id="river-print" aria-hidden="true"></canvas>
+      <div class="rain-impact" aria-hidden="true"><i></i><i></i></div>
+      <div class="arrival-lamp" aria-hidden="true">
+        <svg viewBox="0 0 500 650" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="qd-brass" x1="0" x2=".94" y1=".18" y2=".82" gradientUnits="objectBoundingBox">
+              <stop stop-color="#493e34"/><stop offset=".17" stop-color="#c29858"/><stop offset=".3" stop-color="#f6d797"/>
+              <stop offset=".47" stop-color="#a27c49"/><stop offset=".63" stop-color="#c59d60"/><stop offset=".82" stop-color="#68543f"/><stop offset="1" stop-color="#332e2d"/>
+            </linearGradient>
+            <linearGradient id="qd-wood" x2=".86" y2=".7">
+              <stop stop-color="#432f2c"/><stop offset=".24" stop-color="#786047"/><stop offset=".43" stop-color="#4b3e34"/>
+              <stop offset=".74" stop-color="#35443e"/><stop offset="1" stop-color="#202b31"/>
+            </linearGradient>
+            <linearGradient id="qd-jade" x1=".05" x2=".92" y2=".77">
+              <stop stop-color="#344d48"/><stop offset=".29" stop-color="#92b2a1"/><stop offset=".43" stop-color="#537f73"/><stop offset=".8" stop-color="#2a514f"/><stop offset="1" stop-color="#193a3c"/>
+            </linearGradient>
+            <radialGradient id="qd-paper" cx=".43" cy=".56" r=".69">
+              <stop stop-color="#fff6c8"/><stop offset=".30" stop-color="#ffe399"/><stop offset=".65" stop-color="#eeba79"/><stop offset=".86" stop-color="#ce935c"/><stop offset="1" stop-color="#966b4b"/>
+            </radialGradient>
+            <radialGradient id="qd-fire" cx=".51" cy=".68" r=".53">
+              <stop stop-color="#fffbe0"/><stop offset=".32" stop-color="#fff6b1" stop-opacity=".88"/><stop offset=".73" stop-color="#ffdc83" stop-opacity=".46"/><stop offset="1" stop-color="#ffd175" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="qd-fish-pigment" x1=".26" y1="0" x2=".64" y2=".99">
+              <stop stop-color="#92563d"/><stop offset=".3" stop-color="#c27446"/><stop offset=".68" stop-color="#d6a268"/><stop offset="1" stop-color="#edc98b"/>
+            </linearGradient>
+            <linearGradient id="qd-left-silk" x1="0" y1=".5" x2="1" y2=".31">
+              <stop stop-color="#8f573a"/><stop offset=".19" stop-color="#c78b55"/><stop offset=".52" stop-color="#efba77"/><stop offset=".9" stop-color="#cb9157"/><stop offset="1" stop-color="#8f603b"/>
+            </linearGradient>
+            <linearGradient id="qd-right-silk" x2="1" y2=".17">
+              <stop stop-color="#daaa6c"/><stop offset=".3" stop-color="#f2c784"/><stop offset=".85" stop-color="#b27f4d"/><stop offset="1" stop-color="#74533b"/>
+            </linearGradient>
+            <radialGradient id="qd-bead" cx=".35" cy=".28" r=".73">
+              <stop stop-color="#b5c9a6"/><stop offset=".32" stop-color="#749c83"/><stop offset=".68" stop-color="#42665a"/><stop offset="1" stop-color="#283f3c"/>
+            </radialGradient>
+            <linearGradient id="qd-fringe">
+              <stop stop-color="#5b302c"/><stop offset=".2" stop-color="#a5503e"/><stop offset=".48" stop-color="#d78253"/><stop offset=".72" stop-color="#9a4f3a"/><stop offset="1" stop-color="#542f30"/>
+            </linearGradient>
+            <pattern id="qd-warp" patternUnits="userSpaceOnUse" width="3.8" height="4.7" patternTransform="rotate(-2)">
+              <path d="M.25 0v4.7" stroke="#78482f" stroke-width=".38" opacity=".25"/>
+              <path d="M0 .5h3.8M1 2.7h1.8" stroke="#fff5c1" stroke-width=".42" opacity=".37"/>
+            </pattern>
+            <pattern id="qd-braid" patternUnits="userSpaceOnUse" width="12" height="9">
+              <path d="m-3 7 5-5 5 5 5-5 5 5M-3 4l5-5 5 5 5-5" stroke="#d2ad71" stroke-width=".85"/>
+              <circle cx="2" cy="6" r=".8" fill="#efd39b"/>
+            </pattern>
+            <pattern id="qd-scales" patternUnits="userSpaceOnUse" width="8" height="6">
+              <path d="M-4 1q3 5 7 0m1 0q3 5 7 0M0 4q3 4 7 0" stroke="#efd298" stroke-width=".8" opacity=".8"/>
+            </pattern>
+            <clipPath id="qd-windows">
+              <path d="M132 180 193 198 195 386 149 363Q134 271 132 180ZM198 199 309 195 303 384Q253 395 199 387ZM315 194l49-21q-1 102-20 184l-36 25Z"/>
+            </clipPath>
+            <g id="qd-carp">
+              <path d="M-26-5c-10-4-14-15-28-18 6 7 4 14 14 21-9 5-12 16-18 21 15-2 18-11 32-18Z" fill="#bb7a52" stroke="#925d43" stroke-width="1"/>
+              <path d="M-28-4q-12-5-21-15m18 15-14-9m16 11q-13 3-23 17m21-14-13 9" stroke="#efd099" stroke-width=".8"/>
+              <path d="M-16-9q1-12 8-19-1 8 6 11t15 7M5 5q-8 14-19 17 4-5 3-10t1-8" fill="#b97647" stroke="#98603a" stroke-width="1"/>
+              <path d="M-13-11q0-6 4-12m-2 12 3-7m1 6 3-4m-2 23-4 9" stroke="#e5b67b" stroke-width=".8"/>
+              <path d="M-34-2q12-2 23-9 18-11 35-1 8 4 9 10 1 4-3 6-12 9-26 6-15-3-24-5-9-2-14-2Z" fill="url(#qd-fish-pigment)" stroke="#915b3d" stroke-width="1.15"/>
+              <path d="M-31-2q12-1 21-7 15-9 25-7 4 3 5 5-9-2-19 5-10 8-32 4Z" fill="#e9b97c"/>
+              <path d="M-23 1q8-1 12-5t9-4q3 1 4 4t5 3l3-1q1 4-4 7Q-2 8-10 5t-13-2ZM9-12q5-5 11-2l5 2-6 4-4-1-2 2Z" fill="#a94d36"/>
+              <path d="M-18-2q12-1 23-10 6-2 13-2-6 7-1 16-9 6-17 3-5-2-18-7Z" fill="url(#qd-scales)"/>
+              <path d="M20-9q-5 8 2 13M24-9q-4 3-4 5" stroke="#9b5f3c" stroke-width="1.2"/>
+              <path d="M15 4q1 8-8 15 2-8-3-11 5-4 11-4Z" fill="#c69060" stroke="#996644" stroke-width=".9"/>
+              <path d="M13 6q-1 7-4 10m23-16q8 5 11 0m-12 4q7 4 10 0" stroke="#a46240" stroke-width=".8"/>
+              <circle cx="27" cy="-5" r="2.2" fill="#714936"/><circle cx="26.7" cy="-5.4" r=".75" fill="#fce6a7"/>
+            </g>
+            <g id="qd-watergrass" stroke-linecap="round">
+              <path d="M0 0q10-16 23-21Q11-13 7-2m-8 3q0-19-7-27 4 13 5 25m2 5q19-11 22-10Q8-2 1 4" fill="#708166" opacity=".9"/>
+              <path d="M2 1q7-22 24-35M-2 3Q-7-14-20-19M3 3q12-11 30-12" stroke="#87764f" stroke-width=".85"/>
+            </g>
+            <g id="qd-pendant">
+              <path d="M0 0q-2 12 0 21m0 5v11" stroke="#b79762" stroke-width="1.15"/>
+              <circle cy="23" r="2.6" fill="url(#qd-brass)"/>
+              <path d="M0 32q6 4 3.5 8L.5 44q-6-4-4-8Z" fill="url(#qd-bead)" stroke="#b49b6b" stroke-width=".6"/>
+              <path d="M-2 46h4m-4 1h4" stroke="#d4b37c" stroke-width="1"/>
+              <path d="M-2 48Q-3 61-5 74l4-4 1 5 2-4 2 2-1-24Z" fill="url(#qd-fringe)"/>
+              <path d="m-.5 49-2 21m3-20 .2 21" stroke="#d09057" stroke-width=".7"/>
+            </g>
+          </defs>
+          <!-- Twisted suspension cord, jade button and wire bail. -->
+          <path d="M249-800v859" stroke="#222a29" stroke-width="4"/>
+          <path d="M248.7-800v859" stroke="#8d805e" stroke-width="1.45"/>
+          <path d="M249.9-800v858" stroke="#c1a675" stroke-width=".85" stroke-dasharray="2 2.7"/>
+          <path d="M247.5 49h5v6h-5z" fill="url(#qd-brass)"/>
+          <path d="M250 53q8 8 0 15-8-6 0-15Z" fill="url(#qd-bead)" stroke="#b0915e" stroke-width=".75"/>
+          <path d="M250 67c11 3 7 13 0 19-8-6-10-15 0-19Z" stroke="#332e2b" stroke-width="4"/>
+          <path d="M250 67c11 3 7 13 0 19-8-6-10-15 0-19Z" stroke="#b59965" stroke-width="1.9"/>
+          <path d="M250 80c-6 8-18 13-19 26m19-26c7 7 19 11 20 24" stroke="#292d29" stroke-width="4.3"/>
+          <path d="M250 80c-6 8-18 13-19 25m19-25c7 7 19 11 20 23" stroke="url(#qd-brass)" stroke-width="2.4"/>
+          <path d="M245 93h10l3 8h-15Z" fill="url(#qd-brass)" stroke="#493a2e"/>
+          <ellipse cx="250" cy="99" rx="10" ry="3.2" fill="#705644" stroke="#d6b376"/>
+          <path d="M244 96q1-6 6-9 4 3 6 9-6 2-12 0Z" fill="url(#qd-bead)"/>
+          <!-- Faceted silk windows and their painted koi. -->
+          <path d="m126 159 241-9 4 25q-4 121-23 190l-40 27q-62 16-114 3l-49-26q-16-94-19-210Z" fill="#443c31" stroke="#1c2a2a" stroke-width="4"/>
+          <g clip-path="url(#qd-windows)">
+            <path d="M128 173 195 192l4 204-58-23Z" fill="url(#qd-left-silk)"/>
+            <path d="m192 192 122-8-5 210-116 2Z" fill="url(#qd-paper)"/>
+            <path d="m310 186 59-23-18 204-47 25Z" fill="url(#qd-right-silk)"/>
+            <ellipse cx="254" cy="302" rx="49" ry="67" fill="url(#qd-fire)" opacity=".68"/>
+            <path d="M243 343c-5-13 0-20 7-32 7-10 8-20 9-27 9 13 5 28 1 36q8-4 11-15c1 21-4 30-13 40Z" fill="url(#qd-fire)" opacity=".78"/>
+            <g stroke="#985d3b" stroke-width=".75" opacity=".36">
+              <path d="M151 179q3 95 14 197m5-187q2 95 7 194m31-187 1 190m13-189q-1 99 1 195m66-194q3 90-1 193m41-209q-1 97-12 187m25-193q-1 80-13 182"/>
+              <path d="M127 226q69 39 185 15 30-7 54-21m-237 109q62 39 178 19 35-8 50-24" opacity=".47"/>
+            </g>
+            <g fill="none" stroke="#a96b45" stroke-width="1.1" opacity=".67">
+              <path d="M147 218q14-5 32 2m-34 4q15-4 23 0m48 38q10-4 19-3m-20 7q10-3 15-2m40 58q6-3 16-3m-14 6q8-2 14-1m33-85q13-4 26-3m-22 7q9-2 14-2"/>
+            </g>
+            <g stroke="#a7794a" opacity=".56" stroke-width=".8">
+              <path d="M213 215q2-3 1-6 36 2 78-4 0 6 6 6l-1 23m-88 1-.4-16 4-.5m-1 140-.4 14q5 1 6 6 37 4 67-2 1-5 7-7l1-16"/>
+              <path d="M141 204v-8l8 1q.7-1 1-3l29 9 1 4 6 2 .5 13m139-16-.2-7q2-3 5-3l1-3 21-10m-5 12 6-3-.5 10"/>
+            </g>
+            <g stroke="#ae7952" stroke-width=".9" opacity=".67">
+              <path d="M214 305q5 1 13-2m-22 6q13 1 22-3m33 44q10 2 22-4m-6 9q7 0 14-4m-48-105q7-2 10-1m-18 5q9-3 13-2"/>
+            </g>
+            <use href="#qd-carp" transform="translate(253 279) rotate(-39) scale(.96)"/>
+            <use href="#qd-carp" transform="translate(263 333) rotate(157) scale(.58)"/>
+            <use href="#qd-carp" transform="matrix(.44 .21 -.12 .70 162 280)" opacity=".73"/>
+            <use href="#qd-watergrass" transform="translate(221 388) rotate(-10) scale(1.38)"/>
+            <use href="#qd-watergrass" transform="translate(286 391) rotate(8) scale(-1.1 1.1)"/>
+            <use href="#qd-watergrass" transform="translate(159 369) rotate(7) scale(.67 1.4)"/>
+            <use href="#qd-watergrass" transform="translate(331 368) rotate(-8) scale(.83 1.9)"/>
+            <path d="M319 335q1-49 26-82m-23 53q2-18 16-27-4 11-14 19m10-26q0-10 2-15m-14 65q15-21 25-20-5 7-20 12" fill="#78825d" opacity=".73"/>
+            <path d="M128 169h244v231H128Z" fill="url(#qd-warp)"/>
+          </g>
+          <!-- Lacquered bamboo mullions, jade brackets and the canopy. -->
+          <g stroke="#453b30" stroke-linejoin="round">
+            <path d="m126 176 7 1q2 96 20 191l-8-2q-16-84-19-190Zm65 15 8 1 2 202-7-1Zm117-4 8-3q-1 106-10 205l-6 2q8-108 8-204Zm55-18 8-5q-3 113-23 200l-6 3q18-97 21-198Z" fill="url(#qd-wood)" stroke-width="1.4"/>
+          </g>
+          <g stroke="#f0c585" stroke-width=".95" opacity=".82">
+            <path d="M131 182q3 86 18 179m47-166 2 193m114-197q-1 96-9 190m64-205q-3 99-20 178"/>
+          </g>
+          <g fill="#586756" stroke="#9a8356" stroke-width=".9">
+            <path d="M198 199h29l-5 3-8 1v6l-6 1v7l-4 1-1 11-4 3Zm110-3-26 2 4 3 8-1-1 6 7-1-1 8 4-2 1 10 4-4Z"/>
+            <path d="m136 184 25 7-4 2-7-1 1 5-6-1v8l-4-3-1 7-3-3Zm226-8-21 9 3 1 6-2-1 6 4-2-1 8 4-3-1 7 3-3Z"/>
+            <path d="m201 382 2-17 4 1 1 6 6 1 1 6 8 1 4 6Zm101-2-1-15-4 2-1 6-5 2-2 4-8 2-3 4Z"/>
+          </g>
+          <g stroke="#d2b078" stroke-width=".8">
+            <path d="m201 202 18 .3-1.4 1.6-7.2.2.1 4-5 .2-.1 5.9-3 .5-.5 6m103-23-16 1.3 1 .9 5.9-.1-.4 4.4 5.4-1-.6 6.4 2.4-.6-.7 5.2"/>
+            <path d="m138.5 188 14 4.1-5 .3.8 3.2-4.4-.6.5 5.6-2.8-.7m218-21.4-13 5.2 3.8-.5-.6 4 3.6-1.4-.5 5 3-1.3"/>
+            <path d="M202 376v5l14 2m85-10-.5 6-12 2.4"/>
+          </g>
+          <path d="M115 144q12 8 23 6 44-7 84-35l13-13q14 4 29-1 14 17 33 23 26 10 61 14 16 2 28-8-5 18-21 25l-44 22-122 15-70-20q-12-9-14-28Z" fill="url(#qd-wood)" stroke="#1f2b2a" stroke-width="3"/>
+          <path d="M121 150q14 7 24 4 44-7 86-37l9-11 7 1q-9 21-47 58l-8 10q-38-9-71-25Z" fill="#76634a"/>
+          <path d="M247 107q-11 23-44 63 55-1 110-14-24-28-56-50Z" fill="url(#qd-jade)"/>
+          <path d="M261 106q37 40 56 48 38-7 62-19-13 19-61 35-52 16-120 15l6-13q56-3 106-15-25-26-56-51Z" fill="#4a4a3a"/>
+          <g stroke="url(#qd-brass)" stroke-linecap="round">
+            <path d="M233 111q-28 29-83 45m93-48q-11 25-44 63m56-63q24 19 61 47m-50-45q35 30 82 34" stroke-width="3"/>
+            <path d="M119 149q29 16 73 24 9 3 16 1 88-6 155-31l18-10" stroke-width="2.6"/>
+            <path d="M143 153q43-9 76-29m-52 36q32-14 52-28m14 23q15-24 17-38m11-1q17 14 32 33m-40-29q-3 14-10 30" stroke-width=".9" opacity=".75"/>
+          </g>
+          <g stroke="#d1ad71" stroke-width="1.2" fill="none">
+            <path d="M217 166q8-12 17-13 6 0 6 4 0 3-4 3-3-1-1-3m4 4q7-6 11-7m18 3q6-7 13-7 5 1 3 4-2 2-4 0m6-3q4-5 10-4"/>
+            <path d="M160 158q8-6 13-3l2 2 6-1m154-7q7-6 12-4"/>
+          </g>
+          <g transform="translate(256 149) rotate(-6)" stroke="#c9ad79" stroke-linejoin="round">
+            <path d="M0 9q-6-1-13-6 4-1 7 .5-4-5-3-10 5 2 8 7-.8-7 2-12 3 4 3.3 10 3-4 7.7-6-1 5-4.8 9 3-2 7-2Q9 6 0 9Z" fill="#567b68" stroke-width="1.1"/>
+            <path d="M-.4 7q-5-4-5.8-8.2m7 7.6q1-6 2.4-10m-.4 10q5-4 7.4-7.1" stroke-width=".75"/>
+          </g>
+          <path d="m123 154 72 22q53 1 122-12l57-23-4 17-57 25q-64 13-118 9l-66-19Z" fill="#453f33" stroke="#302f29" stroke-width="1.4"/>
+          <path d="m130 158 65 21q60 1 119-11l54-23-1 7-52 25q-67 13-120 10l-64-19Z" fill="url(#qd-braid)" opacity=".92"/>
+          <path d="m124 154 71 22q56 2 122-12l58-23m-246 32 66 20q61 1 119-10l55-25" stroke="url(#qd-brass)" stroke-width="2.8"/>
+          <g fill="#ead092" stroke="#735c45" stroke-width=".8">
+            <circle cx="132.5" cy="166" r="1.8"/><circle cx="196" cy="184" r="2"/><circle cx="314" cy="173.4" r="1.8"/><circle cx="365" cy="151.8" r="1.6"/>
+          </g>
+          <path d="M119 156q-12-2-13-13 0-6 5-8 6-1 8 4l-1 5q-4 2-5-2 0-2 2-2-5-2-5 2 1 8 13 8m248-9q11-5 9-12-2-4-5-1-1 2 2 3-5 1-6-3-1-5 4-8 9-3 10 7 1 10-12 18" fill="url(#qd-brass)" stroke="#4e4533" stroke-width="1"/>
+          <path d="M223 112q26 6 51-2l3 5q-23 10-57 2Z" fill="url(#qd-brass)" stroke="#544737" stroke-width="1.2"/>
+          <path d="M231 104q17 5 36-1l4 5q-19 7-45 2Z" fill="url(#qd-jade)" stroke="#c9ae74"/>
+          <use href="#qd-pendant" transform="translate(120 155) rotate(3) scale(.86 .91)"/>
+          <use href="#qd-pendant" transform="translate(377 141) rotate(-3)"/>
+          <!-- Foot ring, cast lotus cup and an endless knot. -->
+          <path d="m143 360 52 25q58 8 108-2l45-28-2 14-39 28q-59 16-115 2l-49-25Z" fill="url(#qd-wood)" stroke="#282d29" stroke-width="2.5"/>
+          <path d="m146 362 49 24q57 9 109-2l43-27m-203 17 49 25q58 13 114-2l40-28" stroke="url(#qd-brass)" stroke-width="2.7"/>
+          <path d="m150 368 44 21q59 11 111-2l36-23-1 5-34 24q-57 16-112 2l-43-22Z" fill="url(#qd-braid)"/>
+          <path d="M153 377q11 14 36 23l25 19 34 12 37-12 22-17q25-9 35-28l-35 24q-63 17-117 2Z" fill="url(#qd-wood)" stroke="#26302c" stroke-width="2"/>
+          <path d="M176 390q21 20 43 23m-23-12q16 16 34 17m70-19q-16 15-36 20m58-29q-11 12-27 18" stroke="url(#qd-brass)" stroke-width="1.8"/>
+          <path d="M208 408q37 13 81-1l-5 8q-37 14-68 1Z" fill="url(#qd-jade)" stroke="#ab9667" stroke-width="1.4"/>
+          <path d="M216 415q30 10 66-1l-8 8-25 8-25-7Z" fill="url(#qd-brass)" stroke="#5f543b"/>
+          <path d="M232 426q17 5 34-1l-6 7-11 2-12-3Z" fill="#79644b" stroke="#b69b66" stroke-width="1"/>
+          <path d="M250 432v16" stroke="#b7a076" stroke-width="1.8"/>
+          <circle cx="250" cy="441" r="4.3" fill="url(#qd-bead)" stroke="#a99565" stroke-width=".95"/>
+          <g stroke-linejoin="round" stroke-linecap="round">
+            <defs><path id="qd-knot" d="m250 446 11 10c6 6-2 11-6 6l-13-13c-5-5-10 2-6 6l17 18c5 5 12-1 7-6l-14-14c-4-4-11 1-7 6l11 13 13-12c5-5-1-11-6-7l-17 16c-4 4 1 11 6 7l13-13m-20 0-4 5c-3 5 3 10 7 5l8-7m0 5v10"/></defs>
+            <use href="#qd-knot" stroke="#47342b" stroke-width="4.8"/>
+            <use href="#qd-knot" stroke="#d6a863" stroke-width="2.65"/>
+            <path d="m250 446 11 10m-17-5-5-4m-.2 11 7 8m15-14-6 5m-11 10-5 5m11 1v7" stroke="#f4cf84" stroke-width=".85"/>
+          </g>
+          <path d="M246 478q4-3 8 0l2 5-2 4-8 1-3-5Z" fill="url(#qd-bead)" stroke="#a99569"/>
+          <path d="M250 487c4 5 8 12 7 19q-7 4-15 1-1-9 8-20Z" fill="url(#qd-fringe)" stroke="#77533b"/>
+          <path d="M243 500q7 3 14 0l1 6q-8 4-16 1Z" fill="url(#qd-brass)" stroke="#8a6945"/>
+          <path d="M242 508q-3 18-1 34 1 16-6 38l4-4-1 5 4-3 1 4 3-4 2 4 3-4 3 3 1-5 2 2q2-20 0-34-2-17 1-37-7 3-16 1Z" fill="url(#qd-fringe)" stroke="#714233" stroke-width=".7"/>
+          <g stroke-linecap="round">
+            <path d="M244 508q-4 16-.7 36 1.8 13-4.8 33m8-69q-3 17-.8 34 2 19-3.7 36m8-70c-6 23 3 45-2.9 69m6.2-70c-6 28 3 45-.4 69m3-70c-2.1 14-2.1 25-.9 38q2 14 .3 27" stroke="#d48c58" stroke-width=".85"/>
+            <path d="M242 518c-5 28 1 47-12 60m16-67q-2 16 0 34t-5 40m10-74q-2 17 .2 36t-2.8 34m8-70q-1 20 1 37t-1 27" stroke="#8e4f3d" stroke-width=".8"/>
+          </g>
+        </svg>
+      </div>
+      <div class="arrival-paper" aria-hidden="true"></div>
+      <div class="folio-edge" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="arrival-caption">
+        <h1 id="arrival-name" class="arrival-title">
+          <span class="sr-only">千灯渡</span>
+          <!-- Title artwork uses three glyphs from Ma Shan Zheng, copyright 2018 The Ma Shan Zheng Project Authors.
+               SIL Open Font License 1.1, https://github.com/googlefonts/mashanzheng -->
+          <svg class="arrival-glyph" viewBox="0 0 500 500" aria-hidden="true"><path d="M234 126Q238 122 240.0 122.0Q242 122 255 129Q267 136 271.0 143.5Q275 151 275 164Q275 176 278.5 177.0Q282 178 300.0 175.5Q318 173 335.0 171.0Q352 169 369 165Q384 163 390.0 163.5Q396 164 398 169Q400 173 404.5 173.0Q409 173 409 169Q409 166 410.5 170.5Q412 175 415.0 178.5Q418 182 418.0 195.5Q418 209 412 213Q408 217 405.0 217.5Q402 218 392 218Q378 216 365 212Q356 209 350.0 208.5Q344 208 327 209Q303 210 290 212Q281 215 279.0 216.5Q277 218 275 223Q272 230 269 281Q262 374 259.0 396.5Q256 419 247 443Q237 470 231 470Q229 470 226 463Q224 458 223 342L222 227L209 228Q197 229 185.0 229.5Q173 230 167.5 235.0Q162 240 155 241Q148 242 128.5 248.5Q109 255 105 257Q101 259 99.0 257.5Q97 256 91 251Q82 243 82 241Q82 239 89.0 231.0Q96 223 101 220Q108 216 141.5 206.5Q175 197 209 190L223 187L224 164Q225 146 227.0 139.0Q229 132 234 126ZM244 56Q263 36 268.0 34.0Q273 32 285 41Q317 63 299 77Q295 81 290.0 82.5Q285 84 271 86Q261 88 251.0 93.0Q241 98 238.0 98.0Q235 98 216.5 107.5Q198 117 192.5 117.0Q187 117 183 120Q177 123 168.0 125.0Q159 127 157 126Q153 125 159 121Q160 120 161 119Q215 87 244 56Z"/></svg>
+          <svg class="arrival-glyph" viewBox="0 0 500 500" aria-hidden="true"><path d="M58 146Q61 139 65.0 137.0Q69 135 75 138Q79 141 83.0 148.5Q87 156 87 163Q87 171 83.0 187.0Q79 203 79 209Q79 214 73.0 233.5Q67 253 65 258Q61 263 57.0 262.0Q53 261 47.5 255.5Q42 250 39 243Q36 233 35.5 217.0Q35 201 39 195Q41 189 44 182L51 167Q54 159 54.0 157.0Q54 155 58 146ZM324 131Q327 130 328.5 130.0Q330 130 337 132Q347 135 355.0 140.5Q363 146 367 153Q370 160 367 169Q363 183 368 299Q370 340 370.5 349.0Q371 358 369 361Q367 365 365 376Q363 392 350 417Q343 433 332.5 442.5Q322 452 313 452Q302 452 287 440Q279 433 276.5 433.0Q274 433 274.0 431.5Q274 430 264.5 424.0Q255 418 255 416Q255 414 250.5 410.0Q246 406 241 403Q233 399 225.5 392.5Q218 386 218 384Q218 378 241 383Q259 386 280 381Q293 378 299.5 370.0Q306 362 312 342Q322 311 322 200Q322 133 324 131ZM388 76Q412 75 431.5 74.0Q451 73 451.5 72.5Q452 72 458 75Q467 79 471.5 90.0Q476 101 474 111Q473 115 466.5 119.5Q460 124 455 124Q449 124 438 116L427 108H387Q348 108 320 113Q297 117 288.0 119.5Q279 122 272 127Q256 138 243 124Q235 116 234 110Q234 104 235.5 102.5Q237 101 244 98Q268 89 302 84Q362 76 388 76ZM131 66V51H137Q142 51 148.5 57.5Q155 64 160 74Q164 83 164 102Q164 119 166.0 120.5Q168 122 182 117Q193 113 200 116Q213 122 218.0 134.0Q223 146 214 152Q209 155 196.0 155.0Q183 155 173 152Q164 148 162.5 149.5Q161 151 160 170Q159 185 154.5 207.0Q150 229 147 240Q144 247 146.0 249.5Q148 252 159 255Q180 261 195 275Q200 280 202.0 284.0Q204 288 205 295Q206 305 204.5 309.5Q203 314 196 320L189 325L180 320Q171 315 167.0 310.0Q163 305 158.5 302.0Q154 299 149.5 291.0Q145 283 140 280Q135 277 132.5 279.0Q130 281 123 295Q112 314 97.0 330.5Q82 347 73 349Q67 350 58 358Q39 373 28 371Q25 370 25 368Q25 361 44 341Q51 333 65.0 316.0Q79 299 79 297Q79 296 84 288Q106 256 123 177Q130 140 131 66Z"/></svg>
+          <svg class="arrival-glyph" viewBox="0 0 500 500" aria-hidden="true"><path d="M338 273Q342 268 346 273Q350 276 359.5 278.5Q369 281 375 285Q379 288 379.5 290.0Q380 292 380 298Q379 306 371.5 315.0Q364 324 364.0 327.0Q364 330 360.0 334.0Q356 338 356.0 340.5Q356 343 349.0 354.0Q342 365 342 366Q342 368 358.0 378.5Q374 389 387 396Q416 411 446 421Q455 424 460.0 427.5Q465 431 469.5 432.0Q474 433 475 443Q477 457 472 457Q471 457 471 456Q467 455 465.0 457.0Q463 459 456.0 460.0Q449 461 438.0 466.5Q427 472 421 472Q412 472 371 448Q347 435 325 411Q317 402 315.0 402.0Q313 402 306.0 407.5Q299 413 297.5 413.0Q296 413 280.5 422.5Q265 432 243.0 437.5Q221 443 219.0 441.5Q217 440 206 444Q197 446 194.5 446.0Q192 446 188 444Q182 440 183.0 438.5Q184 437 203.5 429.5Q223 422 240 413Q253 406 272.0 392.5Q291 379 291 375Q291 373 286 369Q284 366 270.5 347.5Q257 329 253 321Q251 317 248 314Q245 310 246 297Q246 294 247.0 293.5Q248 293 253 294Q260 295 274.0 289.0Q288 283 311.5 279.0Q335 275 338 273ZM332 301Q333 299 331.5 298.0Q330 297 327 297Q319 297 295 304Q276 310 276 314Q276 316 291.5 331.5Q307 347 309 347Q311 347 321.0 326.5Q331 306 332 301ZM101 290Q120 264 121 264Q121 264 120.0 268.0Q119 272 116.5 276.0Q114 280 113 283Q110 285 107.5 293.5Q105 302 103 308Q93 331 85 362Q81 376 82.0 382.5Q83 389 91 393Q95 395 95.5 397.0Q96 399 96 405Q92 426 67 430Q58 432 52 427Q48 423 41.0 410.5Q34 398 34 393Q34 390 32.5 390.0Q31 390 29.5 382.0Q28 374 30 368Q31 361 36 360Q43 357 64.5 334.0Q86 311 101 290ZM25 192Q26 188 33 189Q62 195 72 196Q78 197 80.5 202.0Q83 207 83 218Q83 226 82.0 229.0Q81 232 75 237Q66 246 59.5 245.0Q53 244 42 232Q31 220 28 217Q26 213 25.0 205.0Q24 197 25 192ZM347 116Q351 114 358 120Q376 136 373 144Q372 147 376 148Q379 148 387 148Q402 147 406.5 149.5Q411 152 415.0 152.0Q419 152 424.0 155.5Q429 159 429 162Q429 164 424.0 170.5Q419 177 419.0 179.5Q419 182 414.5 185.5Q410 189 402 186Q396 183 382.0 182.0Q368 181 367 182Q366 185 368.5 188.5Q371 192 365.5 212.0Q360 232 358.5 234.0Q357 236 358 245Q360 255 357.5 259.5Q355 264 347 264Q338 264 322.0 266.5Q306 269 303 270Q301 273 295.5 271.0Q290 269 286 266Q281 261 277.5 250.0Q274 239 275 229Q275 217 277.0 217.0Q279 217 278 203Q278 194 277.0 192.0Q276 190 273 189Q269 189 260.5 193.0Q252 197 251 197Q248 197 242.0 190.5Q236 184 237 182Q238 180 236 180Q233 180 230 209Q230 222 228.0 230.5Q226 239 225.5 254.5Q225 270 219.0 284.5Q213 299 213.0 302.5Q213 306 208.0 313.5Q203 321 203.0 324.5Q203 328 197.0 337.0Q191 346 191.0 349.5Q191 353 187.5 358.0Q184 363 176.0 377.0Q168 391 166.0 393.5Q164 396 151.5 409.0Q139 422 130.0 433.5Q121 445 109.5 449.5Q98 454 93 459Q88 463 75.5 468.5Q63 474 61 473Q60 472 71.0 457.5Q82 443 91 433Q97 428 103.5 419.0Q110 410 111 409Q114 406 126.0 389.5Q138 373 138 372Q138 371 141.0 368.5Q144 366 145 361Q146 356 151.5 342.0Q157 328 158 327Q160 324 161.0 320.0Q162 316 166 305Q180 270 191 213Q198 176 200.0 166.5Q202 157 208 141Q213 129 216.0 129.5Q219 130 223 131Q232 132 235.5 139.0Q239 146 236 161Q233 176 234 178Q237 180 266 165Q274 160 276.5 158.0Q279 156 279 151Q283 131 286 131Q288 131 295 135Q299 137 300.0 139.5Q301 142 301 148V157L316 155Q332 154 335.0 152.0Q338 150 339 140Q340 121 347 116ZM333 191 334 180H327Q320 180 317.0 182.5Q314 185 309.5 185.0Q305 185 304 186Q302 189 302.5 206.5Q303 224 305 226Q307 228 317 226Q325 225 326.5 224.0Q328 223 328 218Q328 211 329.5 206.5Q331 202 333 191ZM102 79Q109 75 111.5 75.0Q114 75 122 80Q131 86 139.5 88.5Q148 91 153 96Q157 99 158.0 101.5Q159 104 159 112Q159 124 153.0 131.0Q147 138 136.0 138.0Q125 138 109 113Q103 104 99 101Q94 97 95 87Q96 83 102 79ZM250 92Q269 88 271.0 87.0Q273 86 267.5 75.0Q262 64 262.0 62.5Q262 61 255.0 51.0Q248 41 248.0 40.0Q248 39 252.5 34.5Q257 30 261 30Q268 32 280.0 37.0Q292 42 296 45Q307 54 311 72Q312 79 313.0 80.0Q314 81 319 81Q327 81 333 79Q342 75 363.0 75.5Q384 76 393 81Q399 85 396.5 92.5Q394 100 384 107L376 112L359 108Q342 105 301 105Q268 107 256.0 108.5Q244 110 237 116L232 122L221 118Q211 115 209.0 113.0Q207 111 208 107Q209 102 217.5 99.0Q226 96 250 92Z"/></svg>
+          <svg class="arrival-seal" aria-hidden="true" viewBox="0 0 25 31">
+            <path d="m1.5 2.2 22-1-.4 27.6-21.7 1Z" fill="#b05b44"/>
+            <g fill="none" stroke="#e9bd91" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m4.3 4.5 16.7-.6-.4 22.6-16.3.9Z" stroke-width=".8"/>
+              <path d="m6.5 12.8 5.8-5.1 6.3 4.5m-10.7.3-.2 4.5m8.7-4.9-.1 4.4M6 17.9l12.3-.7M6.6 20.9q2.6-2 5.1-.5t6.1-.7m-10.6 4q2.7-1.6 5.3-.5t4.4-.4" stroke-width="1.1"/>
             </g>
           </svg>
-          <div class="title-stack">
-            <h1>千灯渡</h1>
-            <a id="character-album" href="studio.html">人物图录 <span aria-hidden="true">↗</span></a>
+        </h1>
+        <div class="loading-measure">
+          <div class="loading-ruler" role="progressbar" aria-label="场景构建进度" aria-valuemin="0"><i></i></div>
+          <div class="loading-state">
+            <p id="loading" role="status">正在准备水城…</p>
+            <span id="loading-count" aria-hidden="true"></span>
           </div>
+        </div>
+      </div>
+    </section>
+    <p id="loading-error" role="alert" hidden></p>
+    <main id="court" aria-busy="true" inert>
+      <header>
+        <div class="brand">
+          <h1>千灯渡</h1>
         </div>
         <div class="phase" role="group" aria-label="时段">
           <button type="button" data-mode="night" aria-pressed="true">
@@ -361,6 +764,9 @@
         <nav id="viewpoints" aria-label="景点视角"></nav>
       </footer>
     </main>
+    <script>
+      /* ARRIVAL */
+    </script>
     <script>
       /* COURTYARD */
     </script>
